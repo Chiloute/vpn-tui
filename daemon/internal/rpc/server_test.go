@@ -23,6 +23,16 @@ func start(t *testing.T, member func(uint32) (bool, error), idle time.Duration) 
 		t.Fatal(err)
 	}
 	s.Member, s.IdleTimeout, s.ReadTimeout = member, idle, 5*time.Second
+	return serve2(t, s)
+}
+
+func serve(t *testing.T, s *Server) string {
+	p, _ := serve2(t, s)
+	return p
+}
+
+func serve2(t *testing.T, s *Server) (string, chan error) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "s.sock")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -110,7 +120,7 @@ func TestErrors(t *testing.T) {
 		{"bad json", `{nope`, CodeParse},
 		{"unknown field", `{"jsonrpc":"2.0","id":1,"method":"status","x":1}`, CodeInvalidReq},
 		{"bad params", `{"jsonrpc":"2.0","id":1,"method":"status","params":{"a":1}}`, CodeInvalidPar},
-		{"not implemented", `{"jsonrpc":"2.0","id":1,"method":"list"}`, CodeNotImplemen},
+		{"not implemented", `{"jsonrpc":"2.0","id":1,"method":"down"}`, CodeNotImplemen},
 	} {
 		if m, _ := call(t, path, c.msg); code(m) != c.want {
 			t.Errorf("%s: got %v want %d", c.name, m, c.want)

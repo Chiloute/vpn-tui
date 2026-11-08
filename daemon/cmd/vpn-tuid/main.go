@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Chiloute/vpn-tui/daemon/internal/profile"
 	"github.com/Chiloute/vpn-tui/daemon/internal/rpc"
 )
 
@@ -21,23 +22,29 @@ func main() {
 	socket := flag.String("socket", "/run/vpn-tui/vpn-tuid.sock", "unix socket path (ignored under systemd activation)")
 	group := flag.String("group", "vpn-tui", "group allowed to connect")
 	idle := flag.Duration("idle-timeout", 60*time.Second, "exit after this long without connection")
+	stateDir := flag.String("state-dir", "/var/lib/vpn-tui", "state directory (profiles live in <state-dir>/profiles)")
 	ver := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *ver {
 		fmt.Println(version)
 		return
 	}
-	if err := run(*socket, *group, *idle); err != nil {
+	if err := run(*socket, *group, *stateDir, *idle); err != nil {
 		slog.Error("vpn-tuid", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(path, group string, idle time.Duration) error {
+func run(path, group, stateDir string, idle time.Duration) error {
+	store := &profile.Store{Root: stateDir}
+	if err := store.Init(); err != nil {
+		return err
+	}
 	srv, err := rpc.New()
 	if err != nil {
 		return err
 	}
+	srv.Store = store
 	srv.Member = rpc.GroupMember(group)
 	srv.IdleTimeout = idle
 
