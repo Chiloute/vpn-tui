@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"net"
 	"os/user"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Chiloute/vpn-tui/daemon/internal/profile"
+	"github.com/Chiloute/vpn-tui/daemon/internal/state"
 	"github.com/Chiloute/vpn-tui/proto"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"golang.org/x/sys/unix"
@@ -42,8 +44,13 @@ type Server struct {
 	Busy func() bool
 	// Store backs list/profile_*; nil answers not_implemented.
 	Store *profile.Store
+	// Mgr backs status/up/down/events_subscribe; nil keeps them not_implemented
+	// (status then answers disarmed). Drivers are injected through Mgr.Drivers.
+	Mgr *state.Manager
 
+	ctx               context.Context // set by Serve
 	request, response *jsonschema.Schema
+	method            *jsonschema.Schema
 	active            atomic.Int64
 	lastActive        atomic.Int64 // unix nanos
 }
@@ -63,6 +70,9 @@ func New() (*Server, error) {
 		return nil, err
 	}
 	if s.response, err = c.Compile(schemaBase + "#/$defs/response"); err != nil {
+		return nil, err
+	}
+	if s.method, err = c.Compile(schemaBase + "#/$defs/method"); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -92,6 +102,7 @@ func GroupMember(group string) func(uint32) (bool, error) {
 // (no connection, not Busy) for IdleTimeout. It closes ln on return.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	defer ln.Close()
+	s.ctx = ctx
 	s.lastActive.Store(time.Now().UnixNano())
 	var idle atomic.Bool
 	go func() {
@@ -200,6 +211,10 @@ func (s *Server) handle(conn net.Conn) {
 			return
 		}
 		id, res, e := s.dispatch(line)
+		if _, ok := res.(subscribed); ok {
+			s.stream(conn, sc, id)
+			return
+		}
 		send(conn, id, res, e)
 	}
 }
@@ -210,26 +225,26 @@ func (s *Server) dispatch(line []byte) (any, any, *rpcError) {
 		return nil, nil, &rpcError{CodeParse, "parse error"}
 	}
 	if err := s.request.Validate(v); err != nil {
-		// Distinguish a bad params object from a bad envelope.
-		if m, ok := v.(map[string]any); ok {
-			if _, has := m["params"]; has {
-				delete(m, "params")
-				if s.request.Validate(m) == nil {
-					return nil, nil, &rpcError{CodeInvalidPar, "invalid params"}
-				}
+		// Known method + valid envelope: only the params are wrong (params may even be missing).
+		if m, ok := v.(map[string]any); ok && s.method.Validate(m["method"]) == nil {
+			env := maps.Clone(m)
+			delete(env, "params")
+			env["method"] = "status" // params-less method: checks the envelope alone
+			if s.request.Validate(env) == nil {
+				return m["id"], nil, &rpcError{CodeInvalidPar, "invalid params"}
 			}
 		}
 		return nil, nil, &rpcError{CodeInvalidReq, "invalid request"}
 	}
 	m := v.(map[string]any)
-	if m["method"] == "status" {
-		return m["id"], disarmedStatus, nil
-	}
 	var env struct {
 		Method string
 		Params json.RawMessage
 	}
 	json.Unmarshal(line, &env)
+	if res, e, ok := s.vpnMethod(env.Method, env.Params); ok {
+		return m["id"], res, e
+	}
 	if res, e, ok := s.profileMethod(env.Method, env.Params); ok {
 		return m["id"], res, e
 	}

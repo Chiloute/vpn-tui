@@ -267,6 +267,33 @@ func (s *Store) Get(id string) (*Profile, error) {
 	return p, err
 }
 
+// ReadConfig returns the stored (sanitized) config file of the profile.
+// Same confinement as Get: os.Root, symlinks refused.
+func (s *Store) ReadConfig(id string) ([]byte, error) {
+	rt, err := s.open()
+	if err != nil {
+		return nil, err
+	}
+	defer rt.Close()
+	d, err := regularDir(rt, id)
+	if err != nil {
+		return nil, err
+	}
+	defer d.Close()
+	p, err := load(d)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := d.Lstat(p.Config)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, invalid("%s n'est pas un fichier régulier", p.Config)
+	}
+	return d.ReadFile(p.Config)
+}
+
 // List returns all valid profiles sorted by id; broken entries are logged by id and skipped.
 func (s *Store) List() ([]*Profile, error) {
 	rt, err := s.open()

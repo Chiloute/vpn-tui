@@ -184,3 +184,27 @@ func TestRejectedImportLeavesNothing(t *testing.T) {
 		t.Error("slug")
 	}
 }
+
+func TestReadConfig(t *testing.T) {
+	s := newStore(t)
+	if _, err := s.Import("wireguard", "wg", "wg1", read(t, "../wg/testdata/client.conf")); err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.ReadConfig("wg1")
+	if err != nil || !strings.Contains(string(b), "[Peer]") {
+		t.Fatalf("%v %q", err, b)
+	}
+	if _, err := s.ReadConfig("nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	cfg := filepath.Join(s.Root, "profiles", "wg1", "wg.conf")
+	secret := filepath.Join(t.TempDir(), "secret")
+	os.WriteFile(secret, []byte("x"), 0o600)
+	os.Remove(cfg)
+	if err := os.Symlink(secret, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadConfig("wg1"); err == nil {
+		t.Fatal("lien symbolique accepté")
+	}
+}

@@ -3,17 +3,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/Chiloute/vpn-tui/daemon/internal/driver"
+	"github.com/Chiloute/vpn-tui/daemon/internal/events"
 	"github.com/Chiloute/vpn-tui/daemon/internal/profile"
 	"github.com/Chiloute/vpn-tui/daemon/internal/rpc"
+	"github.com/Chiloute/vpn-tui/daemon/internal/state"
 )
 
 var version = "dev"
@@ -23,41 +28,75 @@ func main() {
 	group := flag.String("group", "vpn-tui", "group allowed to connect")
 	idle := flag.Duration("idle-timeout", 60*time.Second, "exit after this long without connection")
 	stateDir := flag.String("state-dir", "/var/lib/vpn-tui", "state directory (profiles live in <state-dir>/profiles)")
+	runDir := flag.String("run-dir", "/run/vpn-tui", "runtime directory (state.json, openvpn runtime files; created 0700)")
+	cacheDir := flag.String("cache-dir", "/var/cache/vpn-tui", "cache directory (events.jsonl journal)")
+	openvpn := flag.String("openvpn", "", "openvpn binary (default: looked up in PATH)")
+	ovpnUser := flag.String("ovpn-user", "nobody", "user openvpn drops to (empty: no drop)")
+	ovpnGroup := flag.String("ovpn-group", "nogroup", "group openvpn drops to (empty: no drop)")
+	connTimeout := flag.Duration("connect-timeout", 60*time.Second, "openvpn connection timeout")
 	ver := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *ver {
 		fmt.Println(version)
 		return
 	}
-	if err := run(*socket, *group, *stateDir, *idle); err != nil {
+	o := opts{*socket, *group, *stateDir, *runDir, *cacheDir, *openvpn, *ovpnUser, *ovpnGroup, *connTimeout, *idle}
+	if err := run(o); err != nil {
 		slog.Error("vpn-tuid", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(path, group, stateDir string, idle time.Duration) error {
-	store := &profile.Store{Root: stateDir}
+type opts struct {
+	socket, group, stateDir, runDir, cacheDir, openvpn, ovpnUser, ovpnGroup string
+	connTimeout, idle                                                       time.Duration
+}
+
+func run(o opts) error {
+	store := &profile.Store{Root: o.stateDir}
 	if err := store.Init(); err != nil {
 		return err
+	}
+	if err := os.MkdirAll(o.runDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(o.cacheDir, 0o750); err != nil {
+		return err
+	}
+	mgr := &state.Manager{
+		Drivers: map[string]state.Driver{
+			profile.TypeWireGuard: driver.WireGuard{Store: store},
+			profile.TypeOpenVPN: driver.OpenVPN{Store: store, RunDir: o.runDir, Bin: o.openvpn,
+				User: o.ovpnUser, Group: o.ovpnGroup, ConnectTimeout: o.connTimeout},
+		},
+		FW:        state.NoopFirewall{}, // shortcut: pas de kill switch réel, remplacé par nft en phase 4
+		Bus:       events.NewBus(filepath.Join(o.cacheDir, "events.jsonl")),
+		StatePath: filepath.Join(o.runDir, "state.json"),
 	}
 	srv, err := rpc.New()
 	if err != nil {
 		return err
 	}
-	srv.Store = store
-	srv.Member = rpc.GroupMember(group)
-	srv.IdleTimeout = idle
+	srv.Store, srv.Mgr = store, mgr
+	srv.Busy = mgr.Active
+	srv.Member = rpc.GroupMember(o.group)
+	srv.IdleTimeout = o.idle
 
-	ln, owned, err := listen(path)
+	ln, owned, err := listen(o.socket)
 	if err != nil {
 		return err
 	}
 	if owned {
-		defer os.Remove(path)
+		defer os.Remove(o.socket)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	return srv.Serve(ctx, ln)
+	err = srv.Serve(ctx, ln)
+	if derr := mgr.Down(); derr != nil { // SIGTERM: tear the tunnel down before exiting
+		slog.Error("down on exit", "err", derr)
+		err = errors.Join(err, derr)
+	}
+	return err
 }
 
 // listen uses the systemd-passed fd 3 when LISTEN_PID/LISTEN_FDS say so,
