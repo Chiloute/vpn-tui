@@ -18,7 +18,7 @@
     "state": { "enum": ["disarmed", "armed", "reconnecting", "locked"] },
     "event_kind": { "enum": ["up", "down", "drop", "reconnect", "lock", "panic_off", "reconcile", "scope_learned", "peer_rejected", "error"] },
     "tags": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 32 } },
-    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "color": { "type": "string", "pattern": "^base0[0-9A-F]$", "description": "Nom de couleur Base16 du thème ilovetui." },
     "scope": {
       "type": "object",
       "additionalProperties": false,
@@ -80,7 +80,8 @@
           "additionalProperties": false,
           "required": ["private_key"],
           "properties": {
-            "private_key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$", "minLength": 44, "maxLength": 44 }
+            "private_key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$", "minLength": 44, "maxLength": 44 },
+            "preshared_key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$", "minLength": 44, "maxLength": 44 }
           }
         }
       ]
