@@ -1,0 +1,24 @@
+import { killswitch, prettyKey, views } from "./table";
+import { resolveBindings } from "./index";
+import { parse } from "yaml";
+import { readFileSync } from "node:fs";
+
+const defaults = parse(readFileSync(new URL("../../config/default.yaml", import.meta.url), "utf8")) as {
+  keybinds: Record<string, string>;
+};
+
+export function renderKeysMd(): string {
+  const bindings = resolveBindings({ keybinds: defaults.keybinds });
+  const lines = ["<!-- Généré par `bun run gen:keys` depuis app/src/help/table.ts. Ne pas éditer. -->", "", "# Raccourcis", ""];
+  for (const v of Object.values(views)) {
+    lines.push(`## ${v.title}`, "", v.role, "", "| Touche | Action |", "| --- | --- |");
+    for (const c of bindings[v.id]) lines.push(`| \`${prettyKey(c.key)}\` | ${c.desc}${c.scope === "global" ? " (global)" : ""} |`);
+    lines.push("");
+    if (v.actions.length) lines.push(...v.actions.map((a) => `- ${a}`), "");
+    if (v.warnings.length) lines.push(...v.warnings.map((w) => `> Attention : ${w}`), "");
+  }
+  lines.push(`## ${killswitch.title}`, "", killswitch.intro, "");
+  for (const s of killswitch.states) lines.push(`- **${s.label}** : ${s.desc}`);
+  lines.push("", killswitch.panicOff, "");
+  return lines.join("\n");
+}

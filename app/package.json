@@ -3,14 +3,26 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
-  "bin": { "vpn-tui": "src/index.ts" },
+  "bin": {
+    "vpn-tui": "src/index.ts"
+  },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "gen:keys": "bun run scripts/gen-keys.ts"
   },
   "dependencies": {
+    "@opentui/core": "^0.5.9",
+    "@opentui/keymap": "^0.5.9",
+    "@opentui/solid": "^0.5.9",
     "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
+    "ajv-formats": "^3.0.1",
+    "ilovetui": "github:anotherhadi/ilovetui",
+    "opentui-spinner": "^0.0.7",
+    "solid-js": "1.9.12",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bun": "latest",
