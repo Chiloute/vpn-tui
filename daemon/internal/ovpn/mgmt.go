@@ -1,0 +1,117 @@
+package ovpn
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/netip"
+	"strings"
+	"sync"
+	"time"
+)
+
+var cmdTimeout = 3 * time.Second
+
+// stateLine est une notification >STATE:<ts>,<state>,<desc>,<local_ip>,<remote_ip>,...
+type stateLine struct {
+	TS, Name, Desc string
+	LocalIP        netip.Addr
+}
+
+// notif est une notification asynchrone du management (Kind : STATE, HOLD, PASSWORD, FATAL).
+type notif struct {
+	Kind  string
+	State stateLine // Kind == "STATE"
+	Text  string    // autres Kind : texte brut après « : »
+}
+
+func parseNotif(line string) (notif, bool) {
+	kind, rest, ok := strings.Cut(strings.TrimPrefix(line, ">"), ":")
+	if !ok || !strings.HasPrefix(line, ">") {
+		return notif{}, false
+	}
+	switch kind {
+	case "STATE":
+		f := strings.Split(rest, ",")
+		if len(f) < 2 || f[1] == "" {
+			return notif{}, false
+		}
+		st := stateLine{TS: f[0], Name: f[1]}
+		if len(f) > 2 {
+			st.Desc = f[2]
+		}
+		if len(f) > 3 {
+			st.LocalIP, _ = netip.ParseAddr(f[3])
+		}
+		if !st.LocalIP.IsValid() && len(f) > 8 { // tunnel IPv6 seul
+			st.LocalIP, _ = netip.ParseAddr(f[8])
+		}
+		st.LocalIP = st.LocalIP.Unmap()
+		return notif{Kind: kind, State: st}, true
+	case "HOLD", "PASSWORD", "FATAL":
+		return notif{Kind: kind, Text: rest}, true
+	}
+	return notif{}, false
+}
+
+// mgmt est un client de l'interface de management d'OpenVPN (socket unix).
+type mgmt struct {
+	conn    net.Conn
+	mu      sync.Mutex // une commande à la fois
+	replies chan string
+	notifs  chan notif // fermé à la fin de la connexion
+	done    chan struct{}
+}
+
+func dialMgmt(path string) (*mgmt, error) {
+	c, err := net.DialTimeout("unix", path, time.Second)
+	if err != nil {
+		return nil, err
+	}
+	m := &mgmt{conn: c, replies: make(chan string, 8), notifs: make(chan notif, 64), done: make(chan struct{})}
+	go m.read()
+	return m, nil
+}
+
+func (m *mgmt) read() {
+	defer close(m.notifs)
+	defer close(m.done)
+	sc := bufio.NewScanner(m.conn)
+	sc.Buffer(make([]byte, 0, 4096), 1<<20)
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), "\r")
+		if strings.HasPrefix(line, "SUCCESS:") || strings.HasPrefix(line, "ERROR:") {
+			select {
+			case m.replies <- line:
+			default:
+			}
+		} else if n, ok := parseNotif(line); ok {
+			m.notifs <- n
+		}
+	}
+}
+
+// command envoie cmd et attend la réponse SUCCESS:/ERROR:.
+func (m *mgmt) command(cmd string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.conn.SetWriteDeadline(time.Now().Add(cmdTimeout))
+	if _, err := io.WriteString(m.conn, cmd+"\n"); err != nil {
+		return err
+	}
+	select {
+	case r := <-m.replies:
+		if strings.HasPrefix(r, "ERROR:") {
+			return fmt.Errorf("management « %s » : %s", cmd, r)
+		}
+		return nil
+	case <-m.done:
+		return errors.New("management fermé")
+	case <-time.After(cmdTimeout):
+		return fmt.Errorf("management « %s » : pas de réponse", cmd)
+	}
+}
+
+func (m *mgmt) Close() { m.conn.Close() }
