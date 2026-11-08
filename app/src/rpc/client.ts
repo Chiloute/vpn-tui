@@ -83,3 +83,66 @@ function exchange(path: string, data: string, timeoutMs: number): Promise<string
     sock.on("close", () => fail("connexion fermée sans réponse")); // no-op si déjà réglé
   });
 }
+
+const validateNotification = validator("event_notification");
+export type RpcEvent = { time: string; profile: string | null; state: string; kind: string; detail: string };
+export type SubscribeOpts = {
+  socket?: string;
+  onOpen?: () => void; // ack {ok:true} reçu
+  onError?: (e: Error) => void; // transport, ack refusé ou notification invalide (ignorée)
+  onClose?: () => void; // appelé une seule fois, quelle qu'en soit la cause
+};
+
+/** events_subscribe : ack puis une notification `event` par ligne, sur la même connexion, sans timeout de lecture. */
+export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = {}): { close(): void } {
+  const path = opts.socket ?? process.env.VPN_TUI_SOCKET ?? DEFAULT_SOCKET;
+  const req = { jsonrpc: "2.0", id: nextId++, method: "events_subscribe" };
+  const sock = createConnection(path);
+  let buf = "";
+  let acked = false;
+  let closed = false;
+  const err = (m: string) => opts.onError?.(new TransportError(m));
+  const shutdown = () => {
+    if (closed) return;
+    closed = true;
+    sock.destroy();
+    opts.onClose?.();
+  };
+  const fatal = (m: string) => {
+    if (!closed) err(m);
+    shutdown();
+  };
+  const line = (l: string) => {
+    let msg: any;
+    try {
+      msg = JSON.parse(l);
+    } catch {
+      return err("ligne non JSON ignorée");
+    }
+    if (!acked) {
+      if (!validateResponse(msg) || msg.id !== req.id) return fatal("réponse d'abonnement invalide");
+      if (msg.error) return fatal(`abonnement refusé (${msg.error.code}) : ${msg.error.message}`);
+      if (!validator("result_events_subscribe")(msg.result)) return fatal("ack d'abonnement invalide");
+      acked = true;
+      return opts.onOpen?.();
+    }
+    if (!validateNotification(msg)) return err(`notification invalide ignorée : ${ajv.errorsText(validateNotification.errors)}`);
+    onEvent(msg.params as RpcEvent);
+  };
+  sock.setEncoding("utf8");
+  sock.on("error", (e) => fatal(`daemon injoignable (${path}) : ${e.message}`));
+  sock.on("connect", () => sock.write(JSON.stringify(req) + "\n"));
+  sock.on("data", (chunk: string) => {
+    buf += chunk;
+    let nl: number;
+    while (!closed && (nl = buf.indexOf("\n")) >= 0) {
+      const l = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (l.length > 65536) return fatal("ligne trop grande");
+      line(l);
+    }
+    if (!closed && buf.length > 65536) fatal("ligne trop grande");
+  });
+  sock.on("close", shutdown);
+  return { close: shutdown };
+}
