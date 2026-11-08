@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -138,5 +139,38 @@ func TestNoSecretInLogs(t *testing.T) {
 	}
 	if buf.Len() == 0 || strings.Contains(buf.String(), marker) {
 		t.Fatalf("logs empty or leaking: %q", buf.String())
+	}
+}
+
+func TestProfileUpdateKillswitch(t *testing.T) {
+	path, root := startStore(t)
+	req(t, path, "profile_import", map[string]any{"type": "wireguard", "name": "w", "id": "w", "content": rd(t, "../wg/testdata/client.conf")})
+	ks := map[string]any{"enabled": true, "allow_internet": false, "block_ipv6": true}
+	m := req(t, path, "profile_update", map[string]any{"id": "w", "killswitch": ks})
+	validate(t, m, "result_profile_update")
+	// partial update without killswitch leaves it unchanged
+	req(t, path, "profile_update", map[string]any{"id": "w", "name": "x"})
+	for _, m := range []map[string]any{req(t, path, "list", map[string]any{}), req(t, path, "profile_update", map[string]any{"id": "w"})} {
+		var got any
+		if r, ok := m["result"].(map[string]any); ok && r["profiles"] != nil {
+			got = r["profiles"].([]any)[0].(map[string]any)["killswitch"]
+		} else {
+			got = m["result"].(map[string]any)["killswitch"]
+		}
+		if !reflect.DeepEqual(got, any(ks)) {
+			t.Fatalf("killswitch = %v", got)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(root, "profiles", "w", "profile.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"enabled = true", "allow_internet = false", "block_ipv6 = true"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("toml sans %q : %s", want, b)
+		}
+	}
+	if req(t, path, "profile_update", map[string]any{"id": "w", "killswitch": map[string]any{"enabled": true, "allow_internet": true, "block_ipv6": true, "bogus": 1}})["error"] == nil {
+		t.Fatal("unknown field accepted")
 	}
 }

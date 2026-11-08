@@ -18,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Chiloute/vpn-tui/daemon/internal/netinfo"
 )
 
 var stopGrace = 5 * time.Second
@@ -84,6 +86,16 @@ type Process struct {
 	mu                  sync.Mutex
 	localIP             netip.Addr
 	failErr, waitErr    error
+	pid                 int      // adopted process only (cmd == nil)
+	files               []string // adopted process: runtime files removed by Stop
+}
+
+// Pid returns the OpenVPN process id (0 if unknown).
+func (p *Process) Pid() int {
+	if p.cmd != nil {
+		return p.cmd.Process.Pid
+	}
+	return p.pid
 }
 
 func (p *Process) Dead() <-chan struct{} { return p.dead }
@@ -362,11 +374,12 @@ func (p *Process) waitExit(d time.Duration) bool {
 func (p *Process) Stop() error {
 	p.stopOnce.Do(func() {
 		defer func() {
-			for _, f := range []string{p.conf, p.auth, p.sock} {
+			for _, f := range append([]string{p.conf, p.auth, p.sock}, p.files...) {
 				os.Remove(f)
 			}
 		}()
 		if p.cmd == nil {
+			p.stopAdopted()
 			return
 		}
 		if p.m != nil {
@@ -390,4 +403,56 @@ func (p *Process) Stop() error {
 		}
 	})
 	return p.stopErr
+}
+
+func isOpenVPN(pid int) bool {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
+	return err == nil && strings.TrimSpace(string(b)) == "openvpn"
+}
+
+var adoptPoll = 500 * time.Millisecond
+
+// Adopt attaches to an OpenVPN started by a previous daemon. It refuses any pid
+// whose /proc/<pid>/comm is not "openvpn". Dead fires when the process or iface disappears.
+func Adopt(pid int, iface, runDir string) (*Process, error) {
+	if pid <= 1 || !isOpenVPN(pid) {
+		return nil, fmt.Errorf("pid %d n'est pas un processus openvpn", pid)
+	}
+	p := &Process{o: StartOpts{Iface: iface, RunDir: runDir}, pid: pid, dead: make(chan struct{}), exited: make(chan struct{})}
+	for _, g := range []string{"ovpn-*.conf", "auth-*", "ovpn-mgmt.sock"} {
+		m, _ := filepath.Glob(filepath.Join(runDir, g))
+		p.files = append(p.files, m...)
+	}
+	go func() {
+		t := time.NewTicker(adoptPoll)
+		defer t.Stop()
+		for {
+			if !isOpenVPN(pid) { // gone, or pid reused by something else
+				close(p.exited)
+				p.markDead()
+				return
+			}
+			if !netinfo.Exists(iface) {
+				p.markDead()
+			}
+			<-t.C
+		}
+	}()
+	return p, nil
+}
+
+func (p *Process) stopAdopted() {
+	if p.pid == 0 {
+		return
+	}
+	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
+		if !isOpenVPN(p.pid) {
+			return
+		}
+		syscall.Kill(p.pid, sig)
+		if p.waitExit(stopGrace) {
+			return
+		}
+	}
+	p.stopErr = errors.New("openvpn ne répond pas à SIGKILL (pid " + strconv.Itoa(p.pid) + ")")
 }

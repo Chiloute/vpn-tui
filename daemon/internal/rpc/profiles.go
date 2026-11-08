@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -70,7 +71,9 @@ func (s *Server) profileMethod(method string, raw json.RawMessage) (res any, e *
 		DNS                   *profile.DNS
 	}
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &p); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&p); err != nil {
 			return nil, &rpcError{CodeInvalidPar, "invalid params"}, true
 		}
 	}

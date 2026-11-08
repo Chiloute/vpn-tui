@@ -35,7 +35,7 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 			return disarmedStatus, nil, true
 		}
 		return s.status(), nil, true
-	case "up", "down", "events_subscribe", "scope_learn_accept":
+	case "up", "down", "panic_off", "logs", "events_subscribe", "scope_learn_accept":
 	default:
 		return nil, nil, false
 	}
@@ -44,6 +44,7 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 	}
 	var p struct {
 		ID      string
+		Since   string   `json:"since"`
 		CIDRs   []string `json:"cidrs"`
 		Secrets *struct {
 			Username     string `json:"username"`
@@ -64,6 +65,31 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 			return nil, connErr(err), true
 		}
 		return map[string]any{"ok": true}, nil, true
+	case "panic_off":
+		if err := s.Mgr.PanicOff(); err != nil {
+			return nil, connErr(err), true
+		}
+		return map[string]any{"ok": true}, nil, true
+	case "logs":
+		if s.Mgr.Bus == nil {
+			return notImpl()
+		}
+		var since time.Time
+		if p.Since != "" {
+			var err error
+			if since, err = time.Parse(time.RFC3339, p.Since); err != nil {
+				return nil, &rpcError{CodeInvalidPar, "invalid params"}, true
+			}
+		}
+		evs, err := s.Mgr.Bus.Read(since, 1000)
+		if err != nil {
+			slog.Error("logs", "err", err)
+			return nil, &rpcError{-32603, "lecture du journal impossible"}, true
+		}
+		if evs == nil {
+			evs = []events.Event{}
+		}
+		return map[string]any{"events": evs}, nil, true
 	case "events_subscribe":
 		if s.Mgr.Bus == nil {
 			return notImpl()

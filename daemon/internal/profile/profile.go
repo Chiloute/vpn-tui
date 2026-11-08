@@ -46,24 +46,24 @@ func (e *InvalidError) Error() string { return e.Msg }
 func invalid(f string, a ...any) error { return &InvalidError{fmt.Sprintf(f, a...)} }
 
 type Scope struct {
-	CIDRs   []string `toml:"cidrs"`
-	Exclude []string `toml:"exclude"`
-	Learned []string `toml:"learned"`
+	CIDRs   []string `toml:"cidrs" json:"cidrs"`
+	Exclude []string `toml:"exclude" json:"exclude"`
+	Learned []string `toml:"learned" json:"learned"`
 }
 
 type Killswitch struct {
-	Enabled       bool `toml:"enabled"`
-	AllowInternet bool `toml:"allow_internet"`
-	BlockIPv6     bool `toml:"block_ipv6"`
+	Enabled       bool `toml:"enabled" json:"enabled"`
+	AllowInternet bool `toml:"allow_internet" json:"allow_internet"`
+	BlockIPv6     bool `toml:"block_ipv6" json:"block_ipv6"`
 }
 
 type DNS struct {
-	Servers []string `toml:"servers"`
-	Force   bool     `toml:"force"`
+	Servers []string `toml:"servers" json:"servers"`
+	Force   bool     `toml:"force" json:"force"`
 }
 
 type Secrets struct {
-	KeyringRef string `toml:"keyring_ref"`
+	KeyringRef string `toml:"keyring_ref" json:"keyring_ref"`
 }
 
 type Profile struct {

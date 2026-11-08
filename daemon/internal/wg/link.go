@@ -216,6 +216,57 @@ func Up(ctx context.Context, iface string, c *Config, privateKey, presharedKey s
 	return l, nil
 }
 
+// ErrNoHandshake : le serveur n'a pas répondu avant le délai.
+var ErrNoHandshake = errors.New("pas de handshake avec le serveur")
+
+// AwaitHandshake force l'initiation du handshake puis attend qu'il soit confirmé (max wait).
+// L'initiation passe par le keepalive noyau (0 -> 1 s déclenche un envoi immédiat) et non par un datagramme
+// via l'interface : le pare-feu verrouillé (reconnexion) l'abandonnerait avant WireGuard. À l'expiration : Down + ErrNoHandshake.
+func (l *Link) AwaitHandshake(ctx context.Context, c *Config, wait time.Duration) (err error) {
+	defer func() {
+		if err != nil {
+			_ = l.Down()
+		}
+	}()
+	wc, err := wgctrl.New()
+	if err != nil {
+		return err
+	}
+	defer wc.Close()
+	setKeepalive := func(f func(i int) time.Duration) error {
+		var cfg wgtypes.Config
+		for i, p := range c.Peers {
+			pub, err := wgtypes.ParseKey(p.PublicKey)
+			if err != nil {
+				return fmt.Errorf("clé publique du peer %d invalide", i)
+			}
+			d := f(i)
+			cfg.Peers = append(cfg.Peers, wgtypes.PeerConfig{PublicKey: pub, UpdateOnly: true, PersistentKeepaliveInterval: &d})
+		}
+		return wc.ConfigureDevice(l.iface, cfg)
+	}
+	if err := setKeepalive(func(int) time.Duration { return 0 }); err != nil {
+		return err
+	}
+	if err := setKeepalive(func(int) time.Duration { return time.Second }); err != nil {
+		return err
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for l.LastHandshake().IsZero() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return ErrNoHandshake
+		case <-tick.C:
+		}
+	}
+	return setKeepalive(func(i int) time.Duration { return time.Duration(c.Peers[i].PersistentKeepalive) * time.Second })
+}
+
 // Down supprime les règles puis l'interface ; idempotent.
 func (l *Link) Down() error {
 	l.once.Do(func() {
@@ -269,3 +320,32 @@ func (l *Link) LastHandshake() time.Time {
 	}
 	return t
 }
+
+// Adopt rebuilds a Link on an existing WireGuard interface (daemon restart);
+// the fwmark rules are detected so that Down removes them.
+func Adopt(iface string) (*Link, error) {
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		return nil, err
+	}
+	if link.Type() != "wireguard" {
+		return nil, fmt.Errorf("%s n'est pas une interface wireguard", iface)
+	}
+	l := &Link{iface: iface}
+	for _, f := range []int{unix.AF_INET, unix.AF_INET6} {
+		rs, err := netlink.RuleList(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rs {
+			if r.Table == fwmark && r.Priority == 32765 {
+				l.fams = append(l.fams, f)
+				break
+			}
+		}
+	}
+	return l, nil
+}
+
+// PurgeRules removes the fwmark rules of both families (panic-off).
+func PurgeRules() { delRules([]int{unix.AF_INET, unix.AF_INET6}) }

@@ -5,8 +5,8 @@
   "description": "Entry points: #/$defs/request, #/$defs/response, #/$defs/event_notification. Secrets only travel in up.params.secrets.",
   "$defs": {
     "error_codes": {
-      "description": "-32700 parse error; -32600 invalid request; -32601 method not found; -32602 invalid params; -32001 forbidden; -32002 too_large; -32003 not_implemented; -32004 busy; -32005 not_found; -32006 import_rejected.",
-      "enum": [-32700, -32600, -32601, -32602, -32001, -32002, -32003, -32004, -32005, -32006]
+      "description": "-32700 parse error; -32600 invalid request; -32601 method not found; -32602 invalid params; -32001 forbidden; -32002 too_large; -32003 not_implemented; -32004 busy; -32005 not_found; -32006 import_rejected; -32603 connect_failed.",
+      "enum": [-32700, -32600, -32601, -32602, -32603, -32001, -32002, -32003, -32004, -32005, -32006]
     },
     "profile_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
     "profile_name": { "type": "string", "minLength": 1, "maxLength": 64 },

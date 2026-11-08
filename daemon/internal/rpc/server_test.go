@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,9 @@ func TestStatus(t *testing.T) {
 }
 
 func TestForbidden(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root is always allowed (e.g. inside unshare -Ur)")
+	}
 	path, _ := start(t, func(uint32) (bool, error) { return false, nil }, time.Minute)
 	m, r := call(t, path, `{"jsonrpc":"2.0","id":1,"method":"status"}`)
 	if code(m) != CodeForbidden {
