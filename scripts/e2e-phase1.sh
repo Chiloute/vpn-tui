@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Test e2e phase 1 : daemon vpn-tuid réel + CLI réel, sans root. Lancer depuis la racine : nix develop -c scripts/e2e-phase1.sh
+# Cas 1 dans un user namespace (uid 0 : autorisé par --group root). Cas 2 et 3 hors userns.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,6 +11,7 @@ DPID=""
 RC=0
 OUT=""
 ERR=""
+export ROOT WORK BIN SOCK
 
 cleanup() {
   if [[ -n $DPID ]]; then
@@ -35,10 +37,12 @@ cli() {
   ERR=$(cat "$WORK/cli.err")
 }
 
+# Daemon confiné dans $WORK (state, run, cache, marker) : jamais /run ni /var.
 start_daemon() {
   local group=$1
   rm -f "$SOCK"
-  "$BIN" --socket "$SOCK" --group "$group" >"$WORK/daemon.log" 2>&1 &
+  "$BIN" --socket "$SOCK" --group "$group" --state-dir "$WORK/state" --run-dir "$WORK/run" \
+    --cache-dir "$WORK/cache" --marker "$WORK/armed.json" >"$WORK/daemon.log" 2>&1 &
   DPID=$!
   for _ in $(seq 1 50); do
     [[ -S $SOCK ]] && return 0
@@ -67,22 +71,28 @@ pick_foreign_group() {
   return 1
 }
 
+# Cas 1, exécuté dans le userns : daemon et CLI dans le même namespace, uid 0 -> disarmed.
+case1() {
+  trap stop_daemon EXIT
+  start_daemon root
+  cli "$SOCK" status --json
+  [[ $RC -eq 1 ]] || fail "cas 1 : status --json exit $RC (attendu 1)"
+  [[ $OUT == *'"state":"disarmed"'* ]] || fail "cas 1 : JSON sans \"state\":\"disarmed\" : $OUT"
+  cli "$SOCK" status
+  [[ $RC -eq 1 ]] || fail "cas 1 : status exit $RC (attendu 1)"
+  [[ $OUT == *"DÉCONNECTÉ"* ]] || fail "cas 1 : sortie sans DÉCONNECTÉ : $OUT"
+  echo "OK cas 1 : status --json exit 1 + state disarmed ; status exit 1 + DÉCONNECTÉ"
+}
+
 echo "Build du daemon..."
 (cd "$ROOT" && go build -o "$BIN" ./daemon/cmd/vpn-tuid) || fail "go build du daemon"
 
-# Cas 1 : daemon accessible à l'utilisateur courant -> disarmed.
-start_daemon "$(id -gn)"
-cli "$SOCK" status --json
-[[ $RC -eq 1 ]] || fail "cas 1 : status --json exit $RC (attendu 1)"
-[[ $OUT == *'"state":"disarmed"'* ]] || fail "cas 1 : JSON sans \"state\":\"disarmed\" : $OUT"
-cli "$SOCK" status
-[[ $RC -eq 1 ]] || fail "cas 1 : status exit $RC (attendu 1)"
-[[ $OUT == *"DÉCONNECTÉ"* ]] || fail "cas 1 : sortie sans DÉCONNECTÉ : $OUT"
-echo "OK cas 1 : status --json exit 1 + state disarmed ; status exit 1 + DÉCONNECTÉ"
+# Cas 1 : daemon et CLI dans un seul user namespace (uid 0 -> accès autorisé).
+export -f fail cli start_daemon stop_daemon case1
+unshare -Urn bash -c 'set -euo pipefail; case1' || fail "cas 1 (user namespace)"
 
 # Cas 2 : daemon avec un groupe dont l'utilisateur n'est pas membre -> accès refusé (exit 3).
 FOREIGN="$(pick_foreign_group)" || fail "cas 2 : aucun groupe existant dont $(id -un) n'est pas membre"
-stop_daemon
 start_daemon "$FOREIGN"
 cli "$SOCK" status
 [[ $RC -eq 3 ]] || fail "cas 2 : status exit $RC (attendu 3) avec --group $FOREIGN"
