@@ -245,8 +245,8 @@ func TestDrop(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	time.Sleep(20 * time.Millisecond)
-	eq(t, e.l.get(), []string{"Lock(a:1.1.1.1)"})
-	eq(t, kinds(e.ch), []string{"up", "drop"})
+	eq(t, e.l.get(), []string{"Lock(a:1.1.1.1)", "Lock(a:1.1.1.1)"}) // drop, then exhausted (no attempts configured)
+	eq(t, kinds(e.ch), []string{"up", "drop", "lock"})
 }
 
 func TestDown(t *testing.T) {

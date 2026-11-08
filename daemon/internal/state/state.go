@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Chiloute/vpn-tui/daemon/internal/events"
+	"github.com/Chiloute/vpn-tui/daemon/internal/health"
 	"github.com/Chiloute/vpn-tui/daemon/internal/profile"
 )
 
@@ -27,7 +28,10 @@ const (
 	Locked       = "locked"
 )
 
-var ErrAlreadyActive = errors.New("déjà actif")
+var (
+	ErrAlreadyActive = errors.New("déjà actif")
+	ErrCancelled     = errors.New("annulé par panic-off/down")
+)
 
 type Endpoint struct {
 	IP    netip.Addr
@@ -42,6 +46,7 @@ func (Secrets) String() string   { return "[redacted]" }
 func (Secrets) GoString() string { return "[redacted]" }
 
 type Info struct {
+	PID     int // OpenVPN process, 0 for WireGuard
 	Iface   string
 	LHOST   netip.Addr
 	Learned []netip.Prefix
@@ -83,6 +88,11 @@ type Status struct {
 	Rx, Tx     uint64
 }
 
+// Adopter is optionally implemented by a Driver to re-attach to a tunnel that survived a daemon restart.
+type Adopter interface {
+	Adopt(ctx context.Context, p *profile.Profile, iface string, pid int) (Tunnel, Info, error)
+}
+
 // NoopFirewall does nothing (real nftables arrives in phase 4).
 type NoopFirewall struct{}
 
@@ -96,8 +106,26 @@ type session struct {
 	iface   string
 	lhost   string
 	scope   []string
-	tun     Tunnel // nil when the tunnel never came up
+	pid     int
+	tun     Tunnel // nil when the tunnel never came up or is dead
 	closing atomic.Bool
+	ctx     context.Context // cancelled by Down/PanicOff/Up of another profile: stops reconnection
+	cancel  context.CancelFunc
+	sec     *Secrets // memory only; nil once wiped or after a daemon restart
+}
+
+func newSession(p *profile.Profile, eps []Endpoint) *session {
+	s := &session{p: p, eps: eps}
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	return s
+}
+
+func (s *session) stop() { s.cancel() }
+
+// derive copies s with another tunnel (nil = dead), sharing ctx and secrets.
+func (s *session) derive(tun Tunnel) *session {
+	return &session{p: s.p, eps: s.eps, iface: s.iface, lhost: s.lhost, scope: s.scope, pid: s.pid,
+		tun: tun, ctx: s.ctx, cancel: s.cancel, sec: s.sec}
 }
 
 func (s *session) ks() bool { return s.p.Killswitch.Enabled }
@@ -107,6 +135,18 @@ type Manager struct {
 	FW        Firewall
 	Bus       *events.Bus
 	StatePath string
+
+	Reconnect struct {
+		MaxAttempts int
+		Backoff     health.Backoff
+	}
+	Sleep        func(ctx context.Context, d time.Duration) error // injectable; default is a ctx-aware timer
+	MarkerPath   string                                           // persistent armed marker (no secrets)
+	DeleteIface  func(string) error                               // used by Reconcile for orphan interfaces
+	PanicTimeout time.Duration                                    // bound on tunnel Down in PanicOff (default 3s)
+
+	attempt, max int          // protected by smu
+	gen          atomic.Int64 // bumped by every Up/Down/PanicOff; stale commits are dropped
 
 	mu    sync.Mutex // serializes Up/Down
 	smu   sync.Mutex // protects the fields below
@@ -125,6 +165,9 @@ func (m *Manager) Status() Status {
 	m.smu.Lock()
 	defer m.smu.Unlock()
 	st := Status{State: m.state, Scope: []string{}}
+	if m.state == Reconnecting {
+		st.Attempt, st.Max = m.attempt, m.max
+	}
 	if st.State == "" {
 		st.State = Disarmed
 	}
@@ -149,9 +192,10 @@ func (m *Manager) set(state string, s *session) {
 		m.since = time.Now().UTC()
 	}
 	m.state, m.sess = state, s
+	m.attempt, m.max = 0, 0
 	pe := Persisted{State: state, Since: &m.since, Updated: time.Now().UTC()}
 	if s != nil {
-		pe.Profile, pe.Iface, pe.LHOST = s.p.ID, s.iface, s.lhost
+		pe.Profile, pe.Iface, pe.LHOST, pe.PID = s.p.ID, s.iface, s.lhost, s.pid
 	}
 	if m.StatePath != "" {
 		if err := writeAtomic(m.StatePath, pe); err != nil {
@@ -171,6 +215,9 @@ func (m *Manager) emitLocked(kind, detail string) {
 		return
 	}
 	e := events.Event{State: m.state, Kind: kind, Detail: detail}
+	if e.State == "" { // before the first transition (reconcile clean)
+		e.State = Disarmed
+	}
 	if m.sess != nil {
 		e.Profile = m.sess.p.ID
 	}
@@ -195,14 +242,18 @@ func union(a, b []Endpoint) []Endpoint {
 }
 
 func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error {
+	gen := m.gen.Add(1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.smu.Lock()
-	prev := m.sess
+	prev, cur := m.sess, m.state
 	m.smu.Unlock()
-	if prev != nil && prev.tun != nil && prev.p.ID == p.ID {
+	if prev != nil && cur == Armed && prev.p.ID == p.ID {
 		return ErrAlreadyActive
+	}
+	if prev != nil {
+		prev.stop() // end any reconnection loop before touching the firewall
 	}
 	drv, ok := m.Drivers[p.Type]
 	if !ok {
@@ -216,8 +267,9 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 		}
 		return m.fail(Disarmed, nil, err)
 	}
-	next := &session{p: p, eps: eps}
-	locked := false // did we leave a firewall lock in place?
+	next := newSession(p, eps)
+	next.sec = &sec
+	locked := cur == Locked // did we leave a firewall lock in place?
 
 	if prev != nil {
 		if prev.ks() {
@@ -254,6 +306,14 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	}
 
 	tun, info, err := drv.Up(ctx, p, sec, eps)
+	if m.gen.Load() != gen { // PanicOff/Down/another Up ran meanwhile: touch nothing
+		if err == nil {
+			if derr := tun.Down(); derr != nil {
+				m.emit("error", "tunnel annulé: "+derr.Error())
+			}
+		}
+		return ErrCancelled
+	}
 	if err != nil {
 		if next.ks() || locked {
 			return m.fail(Locked, next, err)
@@ -263,7 +323,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 		}
 		return m.fail(Disarmed, nil, err)
 	}
-	next.tun, next.iface = tun, info.Iface
+	next.tun, next.iface, next.pid = tun, info.Iface, info.PID
 	if info.LHOST.IsValid() {
 		next.lhost = info.LHOST.String()
 	}
@@ -282,6 +342,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 		}
 	}
 	m.set(Armed, next)
+	m.writeMarker(next)
 	m.emit("up", "profil "+p.ID+" actif sur "+info.Iface)
 	if len(next.scope) > 0 {
 		m.emit("scope_learned", strings.Join(next.scope, ","))
@@ -291,24 +352,34 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 }
 
 func (m *Manager) Down() error {
+	m.gen.Add(1)
+	m.smu.Lock()
+	if m.sess != nil {
+		m.sess.stop() // unblock a reconnection loop before waiting for mu
+	}
+	m.smu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.smu.Lock()
-	s := m.sess
+	s, st := m.sess, m.state
 	m.smu.Unlock()
-	if s == nil {
+	if s == nil && st != Locked {
 		return nil
 	}
-	if s.tun != nil {
-		s.closing.Store(true)
-		if err := s.tun.Down(); err != nil {
-			s.closing.Store(false)
-			return m.fail(Locked, s, err)
+	if s != nil {
+		s.stop()
+		if s.tun != nil {
+			s.closing.Store(true)
+			if err := s.tun.Down(); err != nil {
+				s.closing.Store(false)
+				return m.fail(Locked, s, err)
+			}
 		}
 	}
 	if err := m.FW.Disarm(); err != nil {
 		return m.fail(Locked, s, err)
 	}
+	m.removeMarker()
 	m.emitDown(s)
 	return nil
 }
@@ -316,36 +387,13 @@ func (m *Manager) Down() error {
 func (m *Manager) emitDown(s *session) {
 	m.set(Disarmed, nil)
 	if m.Bus != nil {
-		m.Bus.Publish(events.Event{Profile: s.p.ID, State: Disarmed, Kind: "down"})
-	}
-}
-
-// watch locks the firewall when the tunnel dies unexpectedly.
-func (m *Manager) watch(s *session) {
-	<-s.tun.Dead()
-	if s.closing.Load() {
-		return
-	}
-	m.smu.Lock()
-	cur := m.sess == s
-	m.smu.Unlock()
-	if !cur {
-		return
-	}
-	if s.ks() {
-		if err := m.FW.Lock(Spec{Profile: s.p, Iface: s.iface, Endpoints: s.eps}); err != nil {
-			m.emit("error", err.Error())
+		e := events.Event{State: Disarmed, Kind: "down"}
+		if s != nil {
+			e.Profile = s.p.ID
 		}
-		m.set(Locked, s)
-	} else {
-		m.set(Disarmed, nil)
+		m.Bus.Publish(e)
 	}
-	m.emit("drop", "tunnel tombé")
-	m.reconnect(s)
 }
-
-// reconnect is the phase 4 hook (backoff, Reconnecting state). Intentionally a no-op.
-func (m *Manager) reconnect(*session) {}
 
 // Persisted is the content of state.json; never contains secrets.
 type Persisted struct {
@@ -353,6 +401,7 @@ type Persisted struct {
 	State   string     `json:"state"`
 	Iface   string     `json:"iface"`
 	LHOST   string     `json:"lhost"`
+	PID     int        `json:"pid"`
 	Since   *time.Time `json:"since"`
 	Updated time.Time  `json:"updated"`
 }
@@ -369,8 +418,8 @@ func Load(path string) (*Persisted, error) {
 	return &p, nil
 }
 
-func writeAtomic(path string, p Persisted) error {
-	b, err := json.Marshal(p)
+func writeAtomic(path string, v any) error {
+	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
