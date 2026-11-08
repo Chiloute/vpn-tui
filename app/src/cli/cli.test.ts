@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main } from "./index";
+import { main, type IO } from "./index";
 import { call, TransportError } from "../rpc/client";
 
 let dir: string, sock: string, server: Server | undefined;
@@ -332,4 +332,84 @@ test("status met à jour LHOST ; écriture impossible -> avertissement seulement
   const r = await run(["status"]);
   expect(r.code).toBe(0);
   expect(r.err).toContain("Avertissement");
+});
+
+// ---- logs / panic-off ----
+const ev = (o = {}) => ({ time: "2026-11-08T14:03:12Z", profile: "thm", state: "armed", kind: "up", detail: "ok", ...o });
+const pad = (n: number) => String(n).padStart(2, "0");
+const sinceSent = () => JSON.parse(received[0]!).params.since as string;
+
+test.each([["2h", 2 * 3600e3], ["7d", 7 * 86400e3], ["30m", 30 * 60e3]])("logs --since %s", async (d, ms) => {
+  await serve(ok({ events: [] }));
+  const r = await run(["logs", "--since", d]);
+  expect(r.code).toBe(0);
+  expect(Math.abs(Date.now() - ms - Date.parse(sinceSent()))).toBeLessThan(5000);
+});
+
+test("logs : défaut 24h, date RFC 3339, durée invalide", async () => {
+  await serve(ok({ events: [] }));
+  expect((await run(["logs"])).out).toBe("Aucun événement");
+  expect(Math.abs(Date.now() - 86400e3 - Date.parse(sinceSent()))).toBeLessThan(5000);
+  received.length = 0;
+  await run(["logs", "--since", "2026-11-01T10:00:00+01:00"]);
+  expect(sinceSent()).toBe("2026-11-01T09:00:00.000Z");
+  received.length = 0;
+  for (const bad of ["abc", "5x", "-2h", "2026-13-45T00:00:00Z", "2026-11-01"]) {
+    const r = await run(["logs", `--since=${bad}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("Durée invalide");
+  }
+  expect(received).toEqual([]);
+});
+
+test("logs texte, --json, injoignable", async () => {
+  expect((await run(["logs"])).code).toBe(3);
+  const events = [ev(), ev({ profile: null, state: "disarmed", kind: "down", detail: "" })];
+  await serve(ok({ events }));
+  const t = await run(["logs"]);
+  const d = new Date(events[0]!.time);
+  const loc = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  expect(t.out.split("\n")[0]).toBe(`${loc}  thm  armed  up  ok`);
+  expect(t.out.split("\n")[1]).toMatch(/  -  disarmed  down$/);
+  const j = await run(["logs", "--json"]);
+  expect(j.out.split("\n").map((l) => JSON.parse(l))).toEqual(events);
+});
+
+const runIO = async (args: string[], extra: Partial<IO>) => {
+  let out = "", err = "";
+  const code = await main(args, { out: (s) => (out += s), err: (s) => (err += s), ...extra }, sock);
+  return { code, out, err };
+};
+
+test("panic-off --yes", async () => {
+  mkdirSync(join(cache, "vpn-tui"), { recursive: true });
+  writeFileSync(lhostFile(), "10.8.0.2\n");
+  await lifecycle([], status("disarmed"));
+  const r = await run(["panic-off", "--yes"]);
+  expect(r.code).toBe(0);
+  expect(methods()).toEqual(["panic_off", "status"]);
+  expect(readFileSync(lhostFile(), "utf8")).toBe("");
+  expect(r.out).toContain("Kill switch supprimé");
+});
+
+test("panic-off : confirmation oui / autre / non-TTY", async () => {
+  await lifecycle([], status("disarmed"));
+  let q = "";
+  const yes = await runIO(["panic-off"], { isTTY: true, ask: async (x) => ((q = x), "oui") });
+  expect(yes.code).toBe(0);
+  expect(q).toBe("Supprimer le kill switch et couper le tunnel ? Tapez « oui » : ");
+  expect(methods()).toEqual(["panic_off", "status"]);
+  received.length = 0;
+  const no = await runIO(["panic-off"], { isTTY: true, ask: async () => "Oui " });
+  expect(no.code).toBe(1);
+  const nt = await runIO(["panic-off"], { isTTY: false, ask: async () => "oui" });
+  expect(nt.code).toBe(1);
+  expect(nt.err).toContain("utilisez --yes en non interactif");
+  expect(received).toEqual([]);
+});
+
+test("panic-off : daemon injoignable -> 3 + recours", async () => {
+  const r = await run(["panic-off", "--yes"]);
+  expect(r.code).toBe(3);
+  expect(r.err).toContain("en dernier recours (root) : vpn-tuid --panic-off, ou nft delete table inet vpn_tui");
 });
