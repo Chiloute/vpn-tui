@@ -3,11 +3,15 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { call, RpcError, TransportError } from "../rpc/client";
 import { detectType, extractSecrets, slugify } from "../import";
-import { deleteSecrets, storeSecrets } from "../keyring";
+import { deleteSecrets, loadSecrets, storeSecrets } from "../keyring";
+import { writeLhost } from "../lhost";
 
 const USAGE = `Usage : vpn-tui status [--json]
         vpn-tui import <fichier> [--name NOM] [--id ID]
         vpn-tui list [--json]
+        vpn-tui up <id>
+        vpn-tui down
+        vpn-tui lhost
         vpn-tui --help`;
 
 type Status = {
@@ -104,6 +108,49 @@ async function importCmd(file: string, name: string | undefined, idOpt: string |
   return 0;
 }
 
+async function getStatus(io: IO, socket?: string): Promise<Status> {
+  const s = (await call("status", undefined, { socket })) as unknown as Status;
+  writeLhost(s.lhost, io.err);
+  return s;
+}
+
+async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
+  try {
+    const { profiles } = (await call("list", undefined, { socket })) as unknown as { profiles: Profile[] };
+    const p = profiles.find((x) => x.id === id);
+    if (!p) {
+      io.err(`Profil inconnu : ${id}`);
+      return 1;
+    }
+    let params: { id: string; secrets?: unknown } = { id };
+    if (p.has_secrets) {
+      let secrets;
+      try {
+        secrets = await loadSecrets(id);
+      } catch (e) {
+        io.err(`Lecture du keyring impossible pour ${id} : ${(e as Error).message}`);
+        return 1;
+      }
+      if (!secrets) {
+        io.err(`secrets introuvables dans le keyring pour ${id} : réimportez le profil`);
+        return 1;
+      }
+      params = { id, secrets };
+    }
+    try {
+      await call("up", params, { socket, timeoutMs: 90_000 });
+    } catch (e) {
+      if (!(e instanceof RpcError)) throw e;
+      io.err(`Erreur du daemon (${e.code}) : ${e.message}`);
+      return 1;
+    }
+    io.out(formatStatus(await getStatus(io, socket)));
+    return 0;
+  } catch (e) {
+    return rpcFailure(e, io);
+  }
+}
+
 export async function main(argv: string[], io: IO, socket?: string): Promise<number> {
   let parsed;
   try {
@@ -147,12 +194,38 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
       return rpcFailure(e, io);
     }
   }
+  if (cmd === "up") {
+    if (rest.length !== 1) {
+      io.err(`up : un identifiant de profil est requis (et un seul)\n${USAGE}`);
+      return 1;
+    }
+    return upCmd(rest[0]!, io, socket);
+  }
+  if (cmd === "down" && rest.length === 0) {
+    try {
+      await call("down", undefined, { socket });
+      io.out(formatStatus(await getStatus(io, socket)));
+      return 0;
+    } catch (e) {
+      return rpcFailure(e, io);
+    }
+  }
+  if (cmd === "lhost" && rest.length === 0) {
+    try {
+      const s = await getStatus(io, socket);
+      if (!s.lhost) return 1;
+      io.out(s.lhost);
+      return 0;
+    } catch (e) {
+      return rpcFailure(e, io);
+    }
+  }
   if (cmd !== "status" || rest.length > 0) {
     io.err(`Commande inconnue : ${positionals.join(" ")}\n${USAGE}`);
     return 1;
   }
   try {
-    const s = (await call("status", undefined, { socket })) as unknown as Status;
+    const s = await getStatus(io, socket);
     io.out(values.json ? JSON.stringify(s) : formatStatus(s));
     return EXIT[s.state];
   } catch (e) {
