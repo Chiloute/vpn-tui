@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test d'intégration du kill switch en netns rootless (aucun sudo). Lancer depuis la racine : nix develop -c scripts/it-killswitch.sh
-# Compile le daemon hors userns, puis se ré-exécute dans `unshare -Urn` (sentinelle IT_INNER).
-# Topologie : client (= userns) <-veth 192.168.77.0/24, fd77::/64-> srv (wg0 10.10.1.1) ; client <-veth 172.31.0.0/24-> conteneur.
-# Fuite simulée : 10.10.1.1 et 10.10.9.9 sur lo de srv + route 10.10.0.0/16 via le LAN : le scope est joignable hors tunnel sans kill switch.
+# Kill switch integration test in rootless netns (no sudo). Run from the repo root: nix develop -c scripts/it-killswitch.sh
+# Builds the daemon outside the userns, then re-runs itself in `unshare -Urn` (IT_INNER sentinel).
+# Topology: client (= userns) <-veth 192.168.77.0/24, fd77::/64-> srv (wg0 10.10.1.1); client <-veth 172.31.0.0/24-> container.
+# Simulated leak: 10.10.1.1 and 10.10.9.9 on lo of srv + route 10.10.0.0/16 via the LAN: the scope is reachable outside the tunnel without the kill switch.
 set -euo pipefail
 # shellcheck source=scripts/it-lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/it-lib.sh"
@@ -17,13 +17,13 @@ for _ in $(seq 1 50); do
   [[ $(readlink "/proc/$CPID/ns/net") != "$(readlink /proc/self/ns/net)" ]] && break
   sleep 0.1
 done
-[[ $(readlink "/proc/$CPID/ns/net") != "$(readlink /proc/self/ns/net)" ]] || fail "netns conteneur non créé"
+[[ $(readlink "/proc/$CPID/ns/net") != "$(readlink /proc/self/ns/net)" ]] || fail "container netns not created"
 ctr() { nsenter -t "$CPID" -n "$@"; }
 
-# --- Réseau ---
+# --- Network ---
 ip addr add fd77::2/64 dev vc nodad
 srv ip addr add fd77::1/64 dev vs nodad
-srv ip addr add 10.10.1.1/32 dev lo # NB : porté aussi par wg0 (/24), la fuite passe par lo
+srv ip addr add 10.10.1.1/32 dev lo # NB: also bound on wg0 (/24), the leak goes via lo
 srv ip addr add 10.10.9.9/32 dev lo
 ip route add 10.10.0.0/16 via 192.168.77.1 dev vc
 srv ip route add 172.31.0.0/24 via 192.168.77.2
@@ -36,7 +36,7 @@ ctr ip addr add 172.31.0.2/24 dev ct
 ctr ip link set ct up
 ctr ip route add default via 172.31.0.1
 sysctl -qw net.ipv4.ip_forward=1
-# Compteur côté serveur : paquets reçus sur vs à destination de 10.10.9.9 (la cible de fuite).
+# Server-side counter: packets received on vs destined for 10.10.9.9 (the leak target).
 srv nft -f - <<'EON'
 table inet cnt {
 	chain input {
@@ -76,8 +76,8 @@ EOC
 DARGS=(--handshake-timeout 3s --reconnect-max-attempts 3 --reconnect-max-backoff 2s --marker "$TMP/armed.json" --idle-timeout 10m)
 
 # --- Helpers ---
-nofail() { if "$@" >/dev/null 2>&1; then fail "$DESC : '$*' aurait dû échouer"; fi; }
-# blocked <desc> <cmd...> : la commande doit échouer et le compteur serveur ne doit pas bouger.
+nofail() { if "$@" >/dev/null 2>&1; then fail "$DESC : '$*' should have failed"; fi; }
+# blocked <desc> <cmd...>: the command must fail and the server counter must not move.
 blocked() {
   DESC=$1
   shift
@@ -85,22 +85,22 @@ blocked() {
   before=$(leak_pkts)
   nofail "$@"
   after=$(leak_pkts)
-  [[ $before == "$after" ]] || fail "$DESC : le serveur a reçu du trafic vers 10.10.9.9 ($before -> $after)"
+  [[ $before == "$after" ]] || fail "$DESC : server received traffic to 10.10.9.9 ($before -> $after)"
 }
 nmap_none() { nmap -sn -n -PE -PS80 --max-retries 1 --host-timeout 5s 10.10.9.9 2>&1 | grep -q '0 hosts up'; }
 table_has() { nft list table inet vpn_tui 2>/dev/null | grep -qF "$1"; }
 table_absent() { ! nft list table inet vpn_tui >/dev/null 2>&1; }
 table_locked() { table_has drop && ! table_has 'oifname "vpntui0" accept'; }
-# locked_blocked <desc> <cmd...> : la table doit être verrouillée (attente max 50 s) et la commande doit échouer.
+# locked_blocked <desc> <cmd...>: the table must be locked (max wait 50 s) and the command must fail.
 locked_blocked() {
   DESC=$1
   shift
   for _ in $(seq 1 500); do table_locked && break; sleep 0.1; done
-  table_locked || fail "$DESC : table jamais verrouillée"
-  if "$@" >/dev/null 2>&1; then fail "$DESC : '$*' a réussi alors que la table est verrouillée"; fi
+  table_locked || fail "$DESC : table never locked"
+  if "$@" >/dev/null 2>&1; then fail "$DESC : '$*' succeeded while the table is locked"; fi
 }
 state_is() { cli status --json; [[ $OUT =~ \"state\":\"($1)\" ]]; }
-# wait_state <regex> <timeout s> [traffic] : attend l'état ; avec "traffic", génère du trafic vers 10.10.1.1.
+# wait_state <regex> <timeout s> [traffic]: waits for the state; with "traffic", generates traffic to 10.10.1.1.
 wait_state() {
   local end=$((SECONDS + $2))
   while ((SECONDS < end)); do
@@ -113,7 +113,7 @@ wait_state() {
 TPID=""
 start_traffic() { (while :; do ping -c1 -W1 10.10.1.1 >/dev/null 2>&1 || true; sleep 0.3; done) & TPID=$!; }
 stop_traffic() { [[ -z $TPID ]] || { kill "$TPID" 2>/dev/null || true; wait "$TPID" 2>/dev/null || true; TPID=""; }; }
-stop_daemon() { # kill -9 si $1 = KILL, sinon SIGTERM
+stop_daemon() { # kill -9 if $1 = KILL, otherwise SIGTERM
   kill "-${1:-TERM}" "$DPID"
   wait "$DPID" 2>/dev/null || true
 }
@@ -129,142 +129,142 @@ dump_on_fail() {
 }
 trap 'dump_on_fail; stop_traffic; kill "$CPID" 2>/dev/null || true; it_cleanup' EXIT
 
-# 0. Témoin sans daemon : le chemin de fuite existe.
+# 0. Control without daemon: the leak path exists.
 b=$(leak_pkts)
-ping -c1 -W1 10.10.9.9 >/dev/null || fail "étape 0 : témoin, 10.10.9.9 injoignable sans kill switch"
-[[ $(leak_pkts) -gt $b ]] || fail "étape 0 : le compteur serveur n'a pas bougé"
-ping6 -c1 -w1 fd77::1 >/dev/null || fail "étape 0 : témoin IPv6"
-ok "étape 0 : sans daemon, 10.10.9.9 et fd77::1 joignables, compteur serveur opérationnel"
+ping -c1 -W1 10.10.9.9 >/dev/null || fail "step 0: control, 10.10.9.9 unreachable without kill switch"
+[[ $(leak_pkts) -gt $b ]] || fail "step 0: server counter did not move"
+ping6 -c1 -w1 fd77::1 >/dev/null || fail "step 0: IPv6 control"
+ok "step 0: without daemon, 10.10.9.9 and fd77::1 reachable, server counter working"
 
 it_daemon "${DARGS[@]}"
 cli import "$TMP/a.conf" --id a
 expect_rc 0 "import a"
 RPC='{"jsonrpc":"2.0","id":1,"method":"profile_update","params":{"id":"a","scope":{"cidrs":["10.10.0.0/16"],"exclude":[],"learned":[]},"killswitch":{"enabled":true,"allow_internet":true,"block_ipv6":true}}}'
 RES=$(echo "$RPC" | socat -t2 - "UNIX-CONNECT:$SOCK")
-[[ $RES == *'"result"'* ]] || fail "profile_update : $RES"
+[[ $RES == *'"result"'* ]] || fail "profile_update: $RES"
 
-# 1. up : armé
+# 1. up: armed
 cli up a
-expect_rc 0 "étape 1 : up a"
-state_is armed || fail "étape 1 : pas armed : $OUT"
-table_has 'oifname "vpntui0" accept' || fail "étape 1 : table vpn_tui absente ou sans règle tunnel"
+expect_rc 0 "step 1: up a"
+state_is armed || fail "step 1: not armed: $OUT"
+table_has 'oifname "vpntui0" accept' || fail "step 1: vpn_tui table missing or without tunnel rule"
 rx_pkts() { ip -s link show vpntui0 | awk '/RX:/{getline; print $2}'; }
 rx0=$(rx_pkts)
-ping -c1 -W2 10.10.1.1 >/dev/null || fail "étape 1 : ping 10.10.1.1"
-[[ $(ip route get 10.10.1.1) == *"dev vpntui0"* ]] || fail "étape 1 : 10.10.1.1 ne passe pas par vpntui0"
-[[ $(rx_pkts) -gt $rx0 ]] || fail "étape 1 : rx vpntui0 inchangé"
-blocked "étape 1 : ping 10.10.9.9" ping -c1 -W1 10.10.9.9
-nmap_none || fail "étape 1 : nmap trouve 10.10.9.9"
-blocked "étape 1 : nmap 10.10.9.9" false
-blocked "étape 1 : ping IPv6 fd77::1" ping6 -c1 -w1 fd77::1
-ctr ping -c1 -W2 192.168.77.1 >/dev/null || fail "étape 1 : conteneur -> 192.168.77.1 doit réussir"
-blocked "étape 1 : conteneur -> 10.10.9.9" ctr ping -c1 -W1 10.10.9.9
-ok "étape 1 : armed, tunnel utilisé, scope hors tunnel/IPv6/forward bloqués, Internet simulé ouvert"
+ping -c1 -W2 10.10.1.1 >/dev/null || fail "step 1: ping 10.10.1.1"
+[[ $(ip route get 10.10.1.1) == *"dev vpntui0"* ]] || fail "step 1: 10.10.1.1 does not go through vpntui0"
+[[ $(rx_pkts) -gt $rx0 ]] || fail "step 1: vpntui0 rx unchanged"
+blocked "step 1: ping 10.10.9.9" ping -c1 -W1 10.10.9.9
+nmap_none || fail "step 1: nmap finds 10.10.9.9"
+blocked "step 1: nmap 10.10.9.9" false
+blocked "step 1: IPv6 ping fd77::1" ping6 -c1 -w1 fd77::1
+ctr ping -c1 -W2 192.168.77.1 >/dev/null || fail "step 1: container -> 192.168.77.1 must succeed"
+blocked "step 1: container -> 10.10.9.9" ctr ping -c1 -W1 10.10.9.9
+ok "step 1: armed, tunnel used, off-tunnel scope/IPv6/forward blocked, simulated Internet open"
 
-# 2. chute : peer retiré côté serveur
+# 2. drop: peer removed on server side
 peer_remove
 start_traffic
-wait_state 'reconnecting|locked' 30 traffic || fail "étape 2 : pas de chute détectée en 30 s ($OUT)"
-blocked "étape 2 : ping 10.10.1.1" ping -c1 -W1 10.10.1.1
-blocked "étape 2 : ping 10.10.9.9" ping -c1 -W1 10.10.9.9
-nmap_none || fail "étape 2 : nmap trouve 10.10.9.9"
-locked_blocked "étape 2 : ping 192.168.77.1 (verrouillé)" ping -c1 -W1 192.168.77.1
-for _ in $(seq 1 10); do # plus de fenêtre armed intermittente tant que le peer est absent
-  state_is 'reconnecting|locked' || fail "étape 2 : état $OUT alors que le peer est absent"
-  table_locked || fail "étape 2 : table non verrouillée alors que le peer est absent"
+wait_state 'reconnecting|locked' 30 traffic || fail "step 2: no drop detected in 30 s ($OUT)"
+blocked "step 2: ping 10.10.1.1" ping -c1 -W1 10.10.1.1
+blocked "step 2: ping 10.10.9.9" ping -c1 -W1 10.10.9.9
+nmap_none || fail "step 2: nmap finds 10.10.9.9"
+locked_blocked "step 2: ping 192.168.77.1 (locked)" ping -c1 -W1 192.168.77.1
+for _ in $(seq 1 10); do # no more intermittent armed window while the peer is absent
+  state_is 'reconnecting|locked' || fail "step 2: state $OUT while the peer is absent"
+  table_locked || fail "step 2: table not locked while the peer is absent"
   sleep 0.3
 done
-blocked "étape 2 : conteneur -> 10.10.9.9" ctr ping -c1 -W1 10.10.9.9
-ok "étape 2 : tunnel tombé, tout bloqué sauf endpoint"
+blocked "step 2: container -> 10.10.9.9" ctr ping -c1 -W1 10.10.9.9
+ok "step 2: tunnel down, all blocked except endpoint"
 
-# 3. reconnexion : peer remis avant l'épuisement des tentatives
+# 3. reconnection: peer restored before attempts are exhausted
 peer_add
-wait_state armed 20 || fail "étape 3 : pas de retour armed ($OUT)"
+wait_state armed 20 || fail "step 3: no return to armed ($OUT)"
 for _ in 1 2 3 4 5; do ping -c1 -W2 10.10.1.1 >/dev/null 2>&1 && break; done
-ping -c1 -W2 10.10.1.1 >/dev/null || fail "étape 3 : ping 10.10.1.1 après reconnexion"
-table_has 'oifname "vpntui0" accept' || fail "étape 3 : règle tunnel absente"
+ping -c1 -W2 10.10.1.1 >/dev/null || fail "step 3: ping 10.10.1.1 after reconnection"
+table_has 'oifname "vpntui0" accept' || fail "step 3: tunnel rule missing"
 stop_traffic
-ok "étape 3 : reconnexion, armed, ping OK"
+ok "step 3: reconnection, armed, ping OK"
 
-# 3b. peer retiré côté serveur : tentatives épuisées -> locked durable, puis down.
+# 3b. peer removed on server side: attempts exhausted -> durable locked, then down.
 peer_remove
 start_traffic
-wait_state 'reconnecting|locked' 30 traffic || fail "étape 3b : pas de chute"
-wait_state locked 90 || fail "étape 3b : pas locked après épuisement ($OUT)"
+wait_state 'reconnecting|locked' 30 traffic || fail "step 3b: no drop"
+wait_state locked 90 || fail "step 3b: not locked after exhaustion ($OUT)"
 stop_traffic
-for _ in $(seq 1 25); do # ~7,5 s : verrouillé stable, aucun aller-retour armed
-  state_is locked || fail "étape 3b : locked non durable ($OUT)"
-  table_locked || fail "étape 3b : table non verrouillée"
+for _ in $(seq 1 25); do # ~7.5 s: stable locked, no armed back-and-forth
+  state_is locked || fail "step 3b: locked not durable ($OUT)"
+  table_locked || fail "step 3b: table not locked"
   sleep 0.3
 done
-blocked "étape 3b : ping 10.10.9.9" ping -c1 -W1 10.10.9.9
+blocked "step 3b: ping 10.10.9.9" ping -c1 -W1 10.10.9.9
 cli down
-expect_rc 0 "étape 3b : down"
-state_is disarmed || fail "étape 3b : pas disarmed ($OUT)"
-table_absent || fail "étape 3b : table encore présente"
-ping -c1 -W1 10.10.9.9 >/dev/null || fail "étape 3b : témoin, 10.10.9.9 devrait réussir après down"
+expect_rc 0 "step 3b: down"
+state_is disarmed || fail "step 3b: not disarmed ($OUT)"
+table_absent || fail "step 3b: table still present"
+ping -c1 -W1 10.10.9.9 >/dev/null || fail "step 3b: control, 10.10.9.9 should succeed after down"
 peer_add
-ok "étape 3b : épuisement -> locked durable, down -> disarmed, table absente, témoin OK"
+ok "step 3b: exhaustion -> durable locked, down -> disarmed, table absent, control OK"
 
-# 4. panic_off (CLI puis binaire)
+# 4. panic_off (CLI then binary)
 cli up a
-expect_rc 0 "étape 4 : up"
+expect_rc 0 "step 4: up"
 cli panic-off --yes
-expect_rc 0 "étape 4 : panic-off"
-table_absent || fail "étape 4 : table présente après panic-off"
-! ip link show vpntui0 >/dev/null 2>&1 || fail "étape 4 : vpntui0 présente après panic-off"
-state_is disarmed || fail "étape 4 : pas disarmed ($OUT)"
+expect_rc 0 "step 4: panic-off"
+table_absent || fail "step 4: table present after panic-off"
+! ip link show vpntui0 >/dev/null 2>&1 || fail "step 4: vpntui0 present after panic-off"
+state_is disarmed || fail "step 4: not disarmed ($OUT)"
 cli up a
-expect_rc 0 "étape 4 : up bis"
-stop_daemon KILL # sinon le daemon vivant reverrouille dès que l'interface disparaît
-"$BIN" --panic-off --run-dir "$TMP/run" --state-dir "$TMP/state" --cache-dir "$TMP/cache" --marker "$TMP/armed.json" >"$TMP/panic.out" 2>&1 || fail "étape 4 : vpn-tuid --panic-off : $(<"$TMP/panic.out")"
-table_absent || fail "étape 4 : table présente après vpn-tuid --panic-off"
-! ip link show vpntui0 >/dev/null 2>&1 || fail "étape 4 : vpntui0 présente après vpn-tuid --panic-off"
-ok "étape 4 : panic_off par RPC et par binaire"
+expect_rc 0 "step 4: up again"
+stop_daemon KILL # otherwise the live daemon re-locks as soon as the interface disappears
+"$BIN" --panic-off --run-dir "$TMP/run" --state-dir "$TMP/state" --cache-dir "$TMP/cache" --marker "$TMP/armed.json" >"$TMP/panic.out" 2>&1 || fail "step 4: vpn-tuid --panic-off: $(<"$TMP/panic.out")"
+table_absent || fail "step 4: table present after vpn-tuid --panic-off"
+! ip link show vpntui0 >/dev/null 2>&1 || fail "step 4: vpntui0 present after vpn-tuid --panic-off"
+ok "step 4: panic_off via RPC and via binary"
 
-# 5. crash du daemon (déjà arrêté à l'étape 4)
+# 5. daemon crash (already stopped in step 4)
 it_daemon "${DARGS[@]}"
 cli up a
-expect_rc 0 "étape 5 : up"
-state_is armed || fail "étape 5 : pas armed ($OUT)"
+expect_rc 0 "step 5: up"
+state_is armed || fail "step 5: not armed ($OUT)"
 stop_daemon KILL
-table_has 'oifname "vpntui0" accept' || fail "étape 5 : table disparue après kill -9"
-blocked "étape 5 : ping 10.10.9.9 daemon mort" ping -c1 -W1 10.10.9.9
+table_has 'oifname "vpntui0" accept' || fail "step 5: table gone after kill -9"
+blocked "step 5: ping 10.10.9.9 daemon dead" ping -c1 -W1 10.10.9.9
 it_daemon "${DARGS[@]}"
-state_is 'armed|locked' || fail "étape 5 : état après relance : $OUT"
-grep -qE '"kind":"reconcile","detail":"(resumed|locked)"' "$TMP/cache/events.jsonl" || fail "étape 5 : événement reconcile resumed/locked absent"
-table_has drop || fail "étape 5 : table absente après relance"
-blocked "étape 5 : ping 10.10.9.9 après relance" ping -c1 -W1 10.10.9.9
-# cas 2 : interface disparue pendant que le daemon est mort
+state_is 'armed|locked' || fail "step 5: state after restart: $OUT"
+grep -qE '"kind":"reconcile","detail":"(resumed|locked)"' "$TMP/cache/events.jsonl" || fail "step 5: reconcile resumed/locked event missing"
+table_has drop || fail "step 5: table missing after restart"
+blocked "step 5: ping 10.10.9.9 after restart" ping -c1 -W1 10.10.9.9
+# case 2: interface gone while the daemon is dead
 stop_daemon KILL
 ip link del vpntui0
 it_daemon "${DARGS[@]}"
-wait_state locked 10 || fail "étape 5 : pas locked, interface perdue ($OUT)"
-table_has drop || fail "étape 5 : table absente (cas 2)"
-! table_has 'oifname "vpntui0" accept' || fail "étape 5 : table non verrouillée (cas 2)"
-blocked "étape 5 : ping 10.10.9.9 (cas 2)" ping -c1 -W1 10.10.9.9
-blocked "étape 5 : ping 192.168.77.1 (cas 2)" ping -c1 -W1 192.168.77.1
-ok "étape 5 : crash -> table maintenue, reconcile armed/locked, interface perdue -> locked"
+wait_state locked 10 || fail "step 5: not locked, interface lost ($OUT)"
+table_has drop || fail "step 5: table missing (case 2)"
+! table_has 'oifname "vpntui0" accept' || fail "step 5: table not locked (case 2)"
+blocked "step 5: ping 10.10.9.9 (case 2)" ping -c1 -W1 10.10.9.9
+blocked "step 5: ping 192.168.77.1 (case 2)" ping -c1 -W1 192.168.77.1
+ok "step 5: crash -> table kept, reconcile armed/locked, interface lost -> locked"
 
-# 6. SIGTERM ne désarme pas
+# 6. SIGTERM does not disarm
 cli down
-expect_rc 0 "étape 6 : down"
+expect_rc 0 "step 6: down"
 cli up a
-expect_rc 0 "étape 6 : up"
+expect_rc 0 "step 6: up"
 stop_daemon TERM
-table_has drop || fail "étape 6 : table disparue après SIGTERM"
-blocked "étape 6 : ping 10.10.9.9" ping -c1 -W1 10.10.9.9
-ok "étape 6 : SIGTERM ne désarme pas"
+table_has drop || fail "step 6: table gone after SIGTERM"
+blocked "step 6: ping 10.10.9.9" ping -c1 -W1 10.10.9.9
+ok "step 6: SIGTERM does not disarm"
 
 # 7. journal
 it_daemon "${DARGS[@]}"
 cli panic-off --yes
-expect_rc 0 "étape 7 : panic-off"
+expect_rc 0 "step 7: panic-off"
 cli logs --json
-expect_rc 0 "étape 7 : logs --json"
+expect_rc 0 "step 7: logs --json"
 for k in up 'drop|lock' reconnect panic_off reconcile; do
-  [[ $OUT =~ \"kind\":\"($k)\" ]] || fail "étape 7 : événement $k absent du journal"
+  [[ $OUT =~ \"kind\":\"($k)\" ]] || fail "step 7: event $k missing from journal"
 done
-ok "étape 7 : journal complet"
+ok "step 7: journal complete"
 
 echo "PASS"
