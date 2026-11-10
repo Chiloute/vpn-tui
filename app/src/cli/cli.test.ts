@@ -54,10 +54,10 @@ async function run(args: string[]) {
 }
 
 test.each([
-  ["disarmed", 1, "○ DÉCONNECTÉ"],
-  ["armed", 0, "● CONNECTÉ thm  LHOST 10.8.0.2  KILLSWITCH ON"],
-  ["locked", 2, "■ VERROUILLÉ"],
-  ["reconnecting", 2, "◐ RECONNEXION 3/10"],
+  ["disarmed", 1, "○ DISCONNECTED"],
+  ["armed", 0, "● CONNECTED thm  LHOST 10.8.0.2  KILLSWITCH ON"],
+  ["locked", 2, "■ LOCKED"],
+  ["reconnecting", 2, "◐ RECONNECTING 3/10"],
 ])("status %s", async (state, code, text) => {
   await serve(ok(status(state)));
   const r = await run(["status"]);
@@ -72,20 +72,20 @@ test("erreur forbidden -> 3", async () => {
   await serve((req) => ({ jsonrpc: "2.0", id: req.id, error: { code: -32001, message: "non" } }));
   const r = await run(["status"]);
   expect(r.code).toBe(3);
-  expect(r.err).toContain("refusé");
+  expect(r.err).toContain("Access denied");
 });
 
 test("socket absent -> 3", async () => {
   const r = await run(["status"]);
   expect(r.code).toBe(3);
-  expect(r.err).toContain("injoignable");
+  expect(r.err).toContain("unreachable");
 });
 
 test("réponse non conforme -> 3", async () => {
   await serve(ok(status("armed", { surprise: 1 })));
   const r = await run(["status"]);
   expect(r.code).toBe(3);
-  expect(r.err).toContain("invalide");
+  expect(r.err).toContain("invalid");
 });
 
 test("requête mal formée refusée avant envoi", async () => {
@@ -98,7 +98,7 @@ test("requête mal formée refusée avant envoi", async () => {
 test("sans argument -> usage, exit 1", async () => {
   const r = await run([]);
   expect(r.code).toBe(1);
-  expect(r.err).toContain("TUI non implémenté");
+  expect(r.err).toContain("TUI not implemented");
 });
 
 // ---- import / list ----
@@ -163,7 +163,7 @@ test("import THM : secrets hors requête, stockés au keyring", async () => {
   expect(JSON.parse(readFileSync(join(kdir, "store"), "utf8"))).toEqual({
     username: "00000000000000000000dead", password: "0000000000000000000000000000beef",
   });
-  expect(r.out).toContain("extraits vers le keyring");
+  expect(r.out).toContain("moved to the keyring");
   expect(r.out).toContain("10.10.10.10 1194");
   expect(r.out + r.err).not.toMatch(/dead|beef/);
 });
@@ -210,7 +210,7 @@ test("import : arguments manquants / fichier illisible / socket absent", async (
   expect((await run(["import"])).code).toBe(1);
   const r = await run(["import", join(dir, "nope.ovpn")]);
   expect(r.code).toBe(1);
-  expect(r.err).toContain("Import impossible");
+  expect(r.err).toContain("Import failed");
   const f = join(dir, "b.ovpn");
   writeFileSync(f, "client\nremote a 1\n");
   expect((await run(["import", f])).code).toBe(3);
@@ -222,16 +222,16 @@ test("list texte et --json", async () => {
   const t = await run(["list"]);
   expect(t.code).toBe(0);
   const lines = t.out.split("\n");
-  expect(lines[0]).toMatch(/^ID\s+NOM\s+TYPE\s+TAGS\s+SCOPE\s+SECRETS$/);
-  expect(lines[1]).toMatch(/^thm\s+thm\s+openvpn\s+ctf\s+10\.0\.0\.0\/8\s+oui$/);
-  expect(lines[2]).toMatch(/^wg0\s+wg0\s+wireguard\s+-\s+10\.0\.0\.0\/8\s+non$/);
+  expect(lines[0]).toMatch(/^ID\s+NAME\s+TYPE\s+TAGS\s+SCOPE\s+SECRETS$/);
+  expect(lines[1]).toMatch(/^thm\s+thm\s+openvpn\s+ctf\s+10\.0\.0\.0\/8\s+yes$/);
+  expect(lines[2]).toMatch(/^wg0\s+wg0\s+wireguard\s+-\s+10\.0\.0\.0\/8\s+no$/);
   expect(JSON.parse((await run(["list", "--json"])).out)).toEqual(res);
 });
 
 test("list vide et daemon injoignable", async () => {
   expect((await run(["list"])).code).toBe(3);
   await serve(ok({ profiles: [] }));
-  expect((await run(["list"])).out).toBe("Aucun profil");
+  expect((await run(["list"])).out).toBe("No profiles");
 });
 
 // ---- up / down / lhost ----
@@ -265,7 +265,7 @@ test("up openvpn : secrets du keyring envoyés, LHOST écrit", async () => {
   expect(r.code).toBe(0);
   expect(methods()).toEqual(["list", "up", "status"]);
   expect(JSON.parse(received[1]!).params).toEqual({ id: "thm", secrets: { username: "uuu", password: "ppp" } });
-  expect(r.out).toBe("● CONNECTÉ thm  LHOST 10.8.0.2  KILLSWITCH ON");
+  expect(r.out).toBe("● CONNECTED thm  LHOST 10.8.0.2  KILLSWITCH ON");
   expect(readFileSync(lhostFile(), "utf8")).toBe("10.8.0.2\n");
   expect(r.out + r.err).not.toMatch(/uuu|ppp/);
 });
@@ -282,7 +282,7 @@ test("up : secrets absents -> exit 1 sans appel up", async () => {
   await lifecycle([prof()]);
   const r = await run(["up", "thm"]);
   expect(r.code).toBe(1);
-  expect(r.err).toBe("secrets introuvables dans le keyring pour thm : réimportez le profil");
+  expect(r.err).toBe("secrets not found in the keyring for thm: re-import the profile");
   expect(methods()).toEqual(["list"]);
 });
 
@@ -290,7 +290,7 @@ test("up : profil inconnu -> 1 ; erreur daemon -> 1 ; injoignable -> 3", async (
   await lifecycle([prof({ has_secrets: false })]);
   const r = await run(["up", "zzz"]);
   expect(r.code).toBe(1);
-  expect(r.err).toContain("Profil inconnu");
+  expect(r.err).toContain("Unknown profile");
   server!.close();
   await serve((req) =>
     req.method === "list" ? ok({ profiles: [prof({ has_secrets: false })] })(req) : { jsonrpc: "2.0", id: req.id, error: { code: -32002, message: "boom" } },
@@ -331,7 +331,7 @@ test("status met à jour LHOST ; écriture impossible -> avertissement seulement
   process.env.XDG_CACHE_HOME = "/proc/nope";
   const r = await run(["status"]);
   expect(r.code).toBe(0);
-  expect(r.err).toContain("Avertissement");
+  expect(r.err).toContain("Warning");
 });
 
 // ---- logs / panic-off ----
@@ -348,7 +348,7 @@ test.each([["2h", 2 * 3600e3], ["7d", 7 * 86400e3], ["30m", 30 * 60e3]])("logs -
 
 test("logs : défaut 24h, date RFC 3339, durée invalide", async () => {
   await serve(ok({ events: [] }));
-  expect((await run(["logs"])).out).toBe("Aucun événement");
+  expect((await run(["logs"])).out).toBe("No events");
   expect(Math.abs(Date.now() - 86400e3 - Date.parse(sinceSent()))).toBeLessThan(5000);
   received.length = 0;
   await run(["logs", "--since", "2026-11-01T10:00:00+01:00"]);
@@ -357,7 +357,7 @@ test("logs : défaut 24h, date RFC 3339, durée invalide", async () => {
   for (const bad of ["abc", "5x", "-2h", "2026-13-45T00:00:00Z", "2026-11-01"]) {
     const r = await run(["logs", `--since=${bad}`]);
     expect(r.code).toBe(1);
-    expect(r.err).toContain("Durée invalide");
+    expect(r.err).toContain("Invalid duration");
   }
   expect(received).toEqual([]);
 });
@@ -389,27 +389,27 @@ test("panic-off --yes", async () => {
   expect(r.code).toBe(0);
   expect(methods()).toEqual(["panic_off", "status"]);
   expect(readFileSync(lhostFile(), "utf8")).toBe("");
-  expect(r.out).toContain("Kill switch supprimé");
+  expect(r.out).toContain("Kill switch removed");
 });
 
 test("panic-off : confirmation oui / autre / non-TTY", async () => {
   await lifecycle([], status("disarmed"));
   let q = "";
-  const yes = await runIO(["panic-off"], { isTTY: true, ask: async (x) => ((q = x), "oui") });
+  const yes = await runIO(["panic-off"], { isTTY: true, ask: async (x) => ((q = x), "yes") });
   expect(yes.code).toBe(0);
-  expect(q).toBe("Supprimer le kill switch et couper le tunnel ? Tapez « oui » : ");
+  expect(q).toBe("Remove the kill switch and drop the tunnel? Type \"yes\": ");
   expect(methods()).toEqual(["panic_off", "status"]);
   received.length = 0;
   const no = await runIO(["panic-off"], { isTTY: true, ask: async () => "Oui " });
   expect(no.code).toBe(1);
-  const nt = await runIO(["panic-off"], { isTTY: false, ask: async () => "oui" });
+  const nt = await runIO(["panic-off"], { isTTY: false, ask: async () => "yes" });
   expect(nt.code).toBe(1);
-  expect(nt.err).toContain("utilisez --yes en non interactif");
+  expect(nt.err).toContain("use --yes when non-interactive");
   expect(received).toEqual([]);
 });
 
 test("panic-off : daemon injoignable -> 3 + recours", async () => {
   const r = await run(["panic-off", "--yes"]);
   expect(r.code).toBe(3);
-  expect(r.err).toContain("en dernier recours (root) : vpn-tuid --panic-off, ou nft delete table inet vpn_tui");
+  expect(r.err).toContain("last resort (root): vpn-tuid --panic-off, or nft delete table inet vpn_tui");
 });

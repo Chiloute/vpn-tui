@@ -58,7 +58,7 @@ test("drop -> critical, up -> normal, args propres, LHOST écrit", async () => {
   push(ev("drop", "bad\x1b[31m\x07 detail"));
   await until(() => args().length >= 7);
   expect(args().slice(0, 4)).toEqual(["-a", "vpn-tui", "-u", "critical"]);
-  expect(args()[5]).toBe("VPN : tunnel perdu");
+  expect(args()[5]).toBe("VPN: tunnel lost");
   push(ev("up"));
   await until(() => args().length >= 14);
   expect(args()[10]).toBe("normal");

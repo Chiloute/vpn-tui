@@ -29,7 +29,7 @@ export function resolveBindings(config: Pick<AppConfig, "keybinds">): Record<Vie
     for (const c of out[view.id]) {
       for (const k of keysOf(c.key)) {
         const prev = seen.get(k);
-        if (prev) throw new Error(`Conflit de touches dans la vue « ${view.id} » : « ${k} » est utilisée par ${prev} et ${c.name}`);
+        if (prev) throw new Error(`Key conflict in view "${view.id}": "${k}" is used by ${prev} and ${c.name}`);
         seen.set(k, c.name);
       }
     }

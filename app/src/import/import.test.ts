@@ -28,10 +28,10 @@ test("openvpn : extraction et suppression du bloc", () => {
 
 test("openvpn : erreurs et absence de bloc", () => {
   expect(extractSecrets("openvpn", "client\n").secrets).toBeNull();
-  expect(() => extractSecrets("openvpn", "auth-user-pass creds.txt\n")).toThrow(/non supporté/);
-  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\nonly\n</auth-user-pass>"))).toThrow(/mal formé/);
-  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\na\nb\nc\n</auth-user-pass>"))).toThrow(/mal formé/);
-  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\na\nb\n"))).toThrow(/non fermé/);
+  expect(() => extractSecrets("openvpn", "auth-user-pass creds.txt\n")).toThrow(/not supported/);
+  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\nonly\n</auth-user-pass>"))).toThrow(/malformed/);
+  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\na\nb\nc\n</auth-user-pass>"))).toThrow(/malformed/);
+  expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\na\nb\n"))).toThrow(/unclosed/);
 });
 
 const wg = (psk?: string, extraPeer = "") => `[Interface]
@@ -56,9 +56,9 @@ test("wireguard : avec et sans PSK", () => {
 });
 
 test("wireguard : erreurs", () => {
-  expect(() => extractSecrets("wireguard", wg().replace(/PrivateKey.*\n/, ""))).toThrow(/absente/);
-  expect(() => extractSecrets("wireguard", wg().replace(K1, "court"))).toThrow(/invalide/);
-  expect(() => extractSecrets("wireguard", wg(K2, `[Peer]\nPresharedKey = ${K3}\n`))).toThrow(/plusieurs/);
+  expect(() => extractSecrets("wireguard", wg().replace(/PrivateKey.*\n/, ""))).toThrow(/missing/);
+  expect(() => extractSecrets("wireguard", wg().replace(K1, "court"))).toThrow(/invalid/);
+  expect(() => extractSecrets("wireguard", wg(K2, `[Peer]\nPresharedKey = ${K3}\n`))).toThrow(/multiple/);
   expect(extractSecrets("wireguard", wg(K2, `[Peer]\nPresharedKey = ${K2}\n`)).secrets).toBeTruthy();
 });
 

@@ -92,7 +92,7 @@ test("toggle : up sans secrets, up avec secrets (90 s), down si actif, busy remi
   expect(h.store.getState().busy).toBeNull();
 
   await h.store.toggle("b");
-  expect(h.store.getState().lastError).toMatch(/introuvables/);
+  expect(h.store.getState().lastError).toMatch(/not found/);
   h.setSecrets({ username: "u", password: "p" });
   await h.store.toggle("b");
   expect(h.calls.filter((c) => c.method === "up")[1]!.params).toEqual({ id: "b", secrets: { username: "u", password: "p" } });
@@ -130,21 +130,21 @@ test("import : secrets au keyring ; rollback si le stockage échoue ; erreur san
   });
   await store.importProfile({ filename: "x.ovpn", content: ovpn, name: "X" });
   expect(calls).toContain("profile_delete");
-  expect(store.getState().lastError).toMatch(/import annulé/);
+  expect(store.getState().lastError).toMatch(/import cancelled/);
   expect(store.getState().busy).toBeNull();
 
   const bad = await h.store.importProfile({ filename: "x.txt", content: "rien" });
   expect(bad).toBeUndefined();
-  expect(h.store.getState().lastError).toMatch(/non reconnu/);
+  expect(h.store.getState().lastError).toMatch(/unrecognized/);
   expect("error" in previewImport({ filename: "x.txt", content: "rien" })).toBe(true);
   const pv: any = previewImport({ filename: "x.ovpn", content: ovpn });
   expect(pv.preview).toEqual({ type: "openvpn", id: "x", name: "x", endpoint: "h 1194", hasSecrets: true });
 });
 
-test("daemon refuse l'import : lastError français, rien dans le keyring", async () => {
-  const h = harness({ handlers: { profile_import: () => { throw new RpcError(-32006, "profil déjà existant"); } } });
+test("daemon refuse l'import : lastError passed through, rien dans le keyring", async () => {
+  const h = harness({ handlers: { profile_import: () => { throw new RpcError(-32006, "profile already exists"); } } });
   await h.store.importProfile({ filename: "x.ovpn", content: "client\nremote h 1194\n" });
-  expect(h.store.getState().lastError).toContain("profil déjà existant");
+  expect(h.store.getState().lastError).toContain("profile already exists");
   expect(h.stored).toEqual([]);
 });
 
@@ -197,14 +197,14 @@ test("bannerModel : tous les états", () => {
   const since = "2026-01-01T10:00:00Z";
   const ps = [profile("a", { scope: { cidrs: ["10.0.0.0/8"], exclude: [], learned: [] } })];
   const ok = bannerModel(status({ state: "armed", profile: "a", killswitch: true, lhost: "10.8.0.2", scope: ["10.0.0.0/8"], since, rx_bytes: 3000, tx_bytes: 1000 }), ps, null, { now, prev: { rx: 1000, tx: 0, at: now - 2000 } });
-  expect(ok).toMatchObject({ label: "● CONNECTÉ a", tone: "ok", killswitch: true, lhost: "10.8.0.2", uptime: "00:01:05", rate: { rx: 1000, tx: 500 } });
+  expect(ok).toMatchObject({ label: "● CONNECTED a", tone: "ok", killswitch: true, lhost: "10.8.0.2", uptime: "00:01:05", rate: { rx: 1000, tx: 500 } });
   expect(ok.scope.warning).toBeNull();
   expect(bannerModel(status({ state: "armed", profile: "a", killswitch: false }), ps, null).tone).toBe("danger");
-  expect(bannerModel(status({ state: "armed", profile: "z", killswitch: true }), ps, null).scope.warning).toBe("pas de scope");
+  expect(bannerModel(status({ state: "armed", profile: "z", killswitch: true }), ps, null).scope.warning).toBe("no scope");
   const rc = bannerModel(status({ state: "reconnecting", profile: "a", reconnect: { attempt: 2, max: 10 } }), ps, null);
-  expect([rc.label, rc.tone]).toEqual(["◐ RECONNEXION 2/10", "warn"]);
+  expect([rc.label, rc.tone]).toEqual(["◐ RECONNECTING 2/10", "warn"]);
   const lk = bannerModel(status({ state: "locked" }), ps, null);
-  expect([lk.label, lk.tone]).toEqual(["■ VERROUILLÉ", "danger"]);
+  expect([lk.label, lk.tone]).toEqual(["■ LOCKED", "danger"]);
   const dis = bannerModel(status(), ps, null);
-  expect([dis.label, dis.tone, dis.uptime, dis.rate]).toEqual(["○ DÉCONNECTÉ", "neutral", null, null]);
+  expect([dis.label, dis.tone, dis.uptime, dis.rate]).toEqual(["○ DISCONNECTED", "neutral", null, null]);
 });

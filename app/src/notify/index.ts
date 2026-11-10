@@ -3,13 +3,13 @@ import { call, subscribe, type RpcEvent } from "../rpc/client";
 import { writeLhost } from "../lhost";
 
 const TITLES: Record<string, [string, "critical" | "normal"]> = {
-  up: ["VPN connecté", "normal"],
-  down: ["VPN déconnecté", "normal"],
-  drop: ["VPN : tunnel perdu", "critical"],
-  reconnect: ["VPN : reconnexion", "normal"],
-  lock: ["VPN verrouillé", "critical"],
-  panic_off: ["VPN : panic-off", "critical"],
-  scope_learned: ["VPN : scope appris", "normal"],
+  up: ["VPN connected", "normal"],
+  down: ["VPN disconnected", "normal"],
+  drop: ["VPN: tunnel lost", "critical"],
+  reconnect: ["VPN: reconnecting", "normal"],
+  lock: ["VPN locked", "critical"],
+  panic_off: ["VPN: panic-off", "critical"],
+  scope_learned: ["VPN: scope learned", "normal"],
 };
 
 /** Retire les caractères de contrôle, tronque à 200 caractères. */
@@ -21,7 +21,7 @@ export function clean(s: string, max = 200): string {
 export function notifyArgs(e: RpcEvent): string[] | null {
   const t = TITLES[e.kind];
   if (!t) return null;
-  const body = clean([e.profile ?? "", e.detail].filter(Boolean).join(" : "));
+  const body = clean([e.profile ?? "", e.detail].filter(Boolean).join(": "));
   return ["-a", "vpn-tui", "-u", t[1], "--", t[0], body];
 }
 
@@ -51,7 +51,7 @@ export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
     p.on("error", (e) => {
       if (warned) return;
       warned = true;
-      warn(`Avertissement : ${bin} introuvable ou inutilisable (${e.message}), notifications désactivées`);
+      warn(`Warning: ${bin} not found or unusable (${e.message}), notifications disabled`);
     });
     p.unref();
   };

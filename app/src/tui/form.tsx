@@ -93,7 +93,7 @@ export function Form(props: Props) {
             }}
           >
             <text wrapMode="none" fg={val(f.id) ? theme.text : theme.muted}>
-              {val(f.id) ? `${"•".repeat(Math.min(val(f.id).length, 24))} (${val(f.id).length} car.)` : (f.placeholder ?? "(masqué)")}{focused(f.id) ? "▏" : ""}
+              {val(f.id) ? `${"•".repeat(Math.min(val(f.id).length, 24))} (${val(f.id).length} chars)` : (f.placeholder ?? "(masked)")}{focused(f.id) ? "▏" : ""}
             </text>
           </box>
         );

@@ -27,7 +27,7 @@ function Profiles() {
     if (p) setSelectedId(p.id);
   };
   const withCur = (f: (p: Profile) => void) => () => { const p = cur(); if (p) f(p); };
-  const wantScope = () => (state().pendingScope ? setAskScope(true) : void notify("Aucun scope appris en attente", { kind: "info" }));
+  const wantScope = () => (state().pendingScope ? setAskScope(true) : void notify("No learned scope pending", { kind: "info" }));
   bindCommands(bindings.profiles, {
     "profiles.nav": move,
     "profiles.toggle": withCur((p) => void store.toggle(p.id)),
@@ -40,8 +40,8 @@ function Profiles() {
   }, usePane().target);
   return (
     <>
-      <Header title="Profils" />
-      <Show when={profiles().length} fallback={<text fg={theme.muted}>Aucun profil. Appuyez sur i pour en importer un.</text>}>
+      <Header title="Profiles" />
+      <Show when={profiles().length} fallback={<text fg={theme.muted}>No profiles. Press i to import one.</text>}>
         <For each={profiles()}>
           {(p, i) => (
             <ListRow
@@ -61,13 +61,13 @@ function Profiles() {
       </Show>
       <Confirm
         open={askDelete()}
-        message={`Supprimer le profil ${cur()?.id} et ses secrets ?`}
+        message={`Delete profile ${cur()?.id} and its secrets?`}
         onNo={() => setAskDelete(false)}
         onYes={() => { setAskDelete(false); const p = cur(); if (p) void store.deleteProfile(p.id); }}
       />
       <Confirm
         open={askScope()}
-        message={`Accepter le scope appris pour ${state().pendingScope?.profile} (${state().pendingScope?.added.length ?? 0} ajouté(s)) ?`}
+        message={`Accept the learned scope for ${state().pendingScope?.profile} (${state().pendingScope?.added.length ?? 0} added)?`}
         onNo={() => setAskScope(false)}
         onYes={() => { setAskScope(false); void store.acceptScope(); }}
       />
@@ -80,35 +80,35 @@ function Detail() {
   const [askScope, setAskScope] = createSignal(false);
   const p = () => state().profiles.find((x) => x.id === selectedId());
   const pending = () => (state().pendingScope?.profile === p()?.id ? state().pendingScope : null);
-  const list = (a: string[] | undefined) => (a?.length ? a.join(", ") : "aucun");
+  const list = (a: string[] | undefined) => (a?.length ? a.join(", ") : "none");
   const extra = (k: string) => (p() as unknown as Record<string, unknown> | undefined)?.[k] as string | undefined;
   const manual = () => p()?.scope.cidrs.filter((c) => !p()!.scope.learned.includes(c));
   bindCommands(bindings.detail, {
-    "detail.scope": () => (pending() ? setAskScope(true) : void notify("Aucun scope appris en attente", { kind: "info" })),
+    "detail.scope": () => (pending() ? setAskScope(true) : void notify("No learned scope pending", { kind: "info" })),
     "detail.edit": () => { setFormMode("edit"); setCurrentView("edit"); },
     "detail.back": () => setCurrentView("profiles"),
   }, usePane().target);
   return (
     <>
-      <Header title={`Détail : ${p()?.name ?? "?"}`} />
-      <Show when={p()} fallback={<text fg={theme.muted}>Profil introuvable.</text>}>
+      <Header title={`Detail: ${p()?.name ?? "?"}`} />
+      <Show when={p()} fallback={<text fg={theme.muted}>Profile not found.</text>}>
         {(pr) => (
           <>
             <KeyValue label="Type" value={pr().type} />
             <Show when={extra("endpoint") ?? extra("remote")}>{(e) => <KeyValue label="Endpoint" value={e()} />}</Show>
             <KeyValue label="Tags" value={list(pr().tags)} />
-            <KeyValue label="Scope (manuel)" value={list(manual())} />
-            <KeyValue label="Scope (appris)" value={list(pr().scope.learned)} />
+            <KeyValue label="Scope (manual)" value={list(manual())} />
+            <KeyValue label="Scope (learned)" value={list(pr().scope.learned)} />
             <KeyValue label="Exclusions" value={list(pr().scope.exclude)} />
-            <KeyValue label="Kill switch" value={pr().killswitch.enabled ? `activé · internet ${pr().killswitch.allow_internet ? "autorisé" : "bloqué"} · IPv6 ${pr().killswitch.block_ipv6 ? "bloqué" : "autorisé"}` : "désactivé (scope non protégé)"} />
-            <KeyValue label="DNS" value={`${list(pr().dns.servers)}${pr().dns.force ? " (forcé)" : ""}`} />
+            <KeyValue label="Kill switch" value={pr().killswitch.enabled ? `enabled · internet ${pr().killswitch.allow_internet ? "allowed" : "blocked"} · IPv6 ${pr().killswitch.block_ipv6 ? "blocked" : "allowed"}` : "disabled (scope unprotected)"} />
+            <KeyValue label="DNS" value={`${list(pr().dns.servers)}${pr().dns.force ? " (forced)" : ""}`} />
           </>
         )}
       </Show>
       <Show when={pending()}>
         {(ps) => (
           <box border borderStyle={theme.borderStyle} borderColor={theme.warning} flexDirection="column" paddingLeft={1} marginTop={1} flexShrink={0}>
-            <text fg={theme.warning}>Scope appris en attente (s pour accepter)</text>
+            <text fg={theme.warning}>Learned scope pending (s to accept)</text>
             <For each={ps().added}>{(c) => <text fg={theme.success}>{`+ ${c}`}</text>}</For>
             <For each={ps().existing}>{(c) => <text fg={theme.muted}>{`= ${c}`}</text>}</For>
           </box>
@@ -116,7 +116,7 @@ function Detail() {
       </Show>
       <Confirm
         open={askScope()}
-        message={`Accepter le scope appris pour ${pending()?.profile} (${pending()?.added.length ?? 0} ajouté(s)) ?`}
+        message={`Accept the learned scope for ${pending()?.profile} (${pending()?.added.length ?? 0} added)?`}
         onNo={() => setAskScope(false)}
         onYes={() => { setAskScope(false); void store.acceptScope(); }}
       />
@@ -146,9 +146,9 @@ function Logs() {
   }, usePane().target);
   return (
     <>
-      <Header title="Logs (7 jours)" />
+      <Header title="Logs (7 days)" />
       <scrollbox ref={(e: ScrollBoxRenderable) => (box = e)} flexGrow={1} scrollY scrollX={false} focusable={false} stickyScroll stickyStart="bottom">
-        <For each={state().events} fallback={<text fg={theme.muted}>Aucun événement.</text>}>
+        <For each={state().events} fallback={<text fg={theme.muted}>No events.</text>}>
           {(e) => <text flexShrink={0} fg={eventColor(e.kind)} wrapMode="none">{line(e)}</text>}
         </For>
       </scrollbox>

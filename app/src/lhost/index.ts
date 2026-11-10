@@ -19,6 +19,6 @@ export function writeLhost(ip: string | null, warn: (s: string) => void = consol
     writeFileSync(tmp, content);
     renameSync(tmp, path);
   } catch (e) {
-    warn(`Avertissement : écriture de ${path} impossible : ${(e as Error).message}`);
+    warn(`Warning: cannot write ${path}: ${(e as Error).message}`);
   }
 }

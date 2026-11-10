@@ -18,6 +18,6 @@ export type TuiCtx = {
 export const TuiContext = createContext<TuiCtx>();
 export const useTui = (): TuiCtx => {
   const c = useContext(TuiContext);
-  if (!c) throw new Error("useTui hors du Shell");
+  if (!c) throw new Error("useTui outside of Shell");
   return c;
 };

@@ -81,9 +81,9 @@ for (const size of sizes) {
     expect(frame()).toContain("thm.ovpn");
     await press("enter");
     const f = frame();
-    expect(f).toContain("Type : openvpn");
+    expect(f).toContain("Type: openvpn");
     expect(f).toContain("thm.example.org 1194");
-    expect(f).toContain("extraits vers le keyring");
+    expect(f).toContain("moved to the keyring");
     expect(f).not.toContain("dead");
     expect(f).not.toContain("beef");
     expect(s.importProfile).not.toHaveBeenCalled();
@@ -103,7 +103,7 @@ for (const size of sizes) {
     await press("i");
     await type(join(dir, "bad.ovpn"));
     await press("enter");
-    expect(frame()).toContain("auth-user-pass <fichier>");
+    expect(frame()).toContain("auth-user-pass <file>");
     expect(s.importProfile).not.toHaveBeenCalled();
     expect(currentView()).toBe("import");
   });
@@ -111,7 +111,7 @@ for (const size of sizes) {
   test(`import : refus du daemon (up /bin/sh) affiché ${tag}`, async () => {
     const { dir } = fixture("evil.ovpn", "client\nremote x 1194\nup /bin/sh\n");
     const s = fakeStore({ profiles: [prof()] });
-    s.importProfile.mockImplementation(async () => { s.set({ lastError: "Erreur du daemon (-32006) : directive interdite : up" }); return undefined; });
+    s.importProfile.mockImplementation(async () => { s.set({ lastError: "Daemon error (-32006): directive interdite : up" }); return undefined; });
     await mount(s, size);
     await press("i");
     await type(join(dir, "evil.ovpn"));
@@ -162,7 +162,7 @@ for (const size of sizes) {
     await press("n");
     await press("ctrl+s");
     expect(s.createProfile).not.toHaveBeenCalled();
-    expect(frame()).toContain("requis");
+    expect(frame()).toContain("required");
     await press("stab"); // retour sur le choix du type
     await press("right"); // WireGuard
     await tabs(1); await type("wg");
@@ -174,7 +174,7 @@ for (const size of sizes) {
     await tabs(1); await type("10.10.0.0/16");
     await press("ctrl+s");
     expect(s.createProfile).not.toHaveBeenCalled();
-    expect(frame()).toContain("base64 de 44 caractères");
+    expect(frame()).toContain("44-character base64");
     expect(frame()).not.toContain("abc");
   });
 
@@ -205,7 +205,7 @@ for (const size of sizes) {
     await mount(s, size);
     await press("e");
     expect(currentView()).toBe("edit");
-    expect(frame()).toContain("réimportez");
+    expect(frame()).toContain("re-import");
     await tabs(3); // cidrs
     await type("10.1.0.0/16"); // le curseur est en début de zone
     await press("enter");
@@ -220,25 +220,25 @@ for (const size of sizes) {
     expect(currentView()).toBe("detail");
   });
 
-  test(`édition : avertissement kill switch, CIDR invalide, annulation confirmée ${tag}`, async () => {
+  test(`édition : avertissement kill switch, invalid CIDR, annulation confirmée ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("e");
     await tabs(5); // ks_enabled
-    expect(frame()).not.toContain("ne sera pas protégé");
+    expect(frame()).not.toContain("will not be protected");
     await press("enter");
-    expect(frame()).toContain("le scope ne sera pas protégé");
+    expect(frame()).toContain("the scope will not be protected");
     await press("stab"); await press("stab"); // cidrs
     await type("zzz");
     await press("ctrl+s");
     expect(s.updateProfile).not.toHaveBeenCalled();
-    expect(frame()).toContain("CIDR invalide");
+    expect(frame()).toContain("invalid CIDR");
     await press("escape");
-    expect(frame()).toContain("Abandonner");
+    expect(frame()).toContain("Discard");
     await press("n");
     expect(currentView()).toBe("edit");
     await press("escape");
-    await press("o");
+    await press("y");
     expect(currentView()).toBe("detail");
   });
 
@@ -256,7 +256,7 @@ for (const size of sizes) {
     expect(frame()).not.toContain("Supprimer le profil");
     // import : même garde-fou dans le champ chemin
     await press("escape");
-    await press("o"); // formulaire modifié : confirmation
+    await press("y"); // formulaire modifié : confirmation
     await press("i");
     await type("xq");
     expect(currentView()).toBe("import");
@@ -264,12 +264,12 @@ for (const size of sizes) {
   });
 }
 
-test("bandeau : « connexion au daemon… » avant le premier refresh, puis injoignable", async () => {
+test("banner: connecting to daemon… before the first refresh, then unreachable", async () => {
   const s = fakeStore({ daemonReachable: false });
   await mount(s, sizes[0]!);
-  expect(frame()).toContain("connexion au daemon…");
-  expect(frame()).not.toContain("daemon injoignable");
+  expect(frame()).toContain("connecting to daemon…");
+  expect(frame()).not.toContain("daemon unreachable");
   s.set({ lastError: "connect ENOENT" });
   await frames();
-  expect(frame()).toContain("daemon injoignable");
+  expect(frame()).toContain("daemon unreachable");
 });

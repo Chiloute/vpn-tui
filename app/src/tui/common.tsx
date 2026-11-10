@@ -12,14 +12,14 @@ export const [formMode, setFormMode] = createSignal<"create" | "edit">("edit");
 /** Libellé du spinner de SectionHeader selon busy / reconnexion, null si rien en cours. */
 export function loadingLabel(s: State): string | null {
   switch (s.busy) {
-    case "up": return "Connexion…";
-    case "down": return "Déconnexion…";
-    case "reconnect": return "Bascule…";
+    case "up": return "Connecting…";
+    case "down": return "Disconnecting…";
+    case "reconnect": return "Switching…";
     case "panic": return "Panic-off…";
-    case "import": return "Enregistrement…";
+    case "import": return "Saving…";
   }
   const r = s.status;
-  return r?.state === "reconnecting" ? `Reconnexion ${r.reconnect.attempt}/${r.reconnect.max}…` : null;
+  return r?.state === "reconnecting" ? `Reconnecting ${r.reconnect.attempt}/${r.reconnect.max}…` : null;
 }
 
 export function Header(props: { title: string }) {
@@ -43,8 +43,8 @@ export function Confirm(props: { open: boolean; message: string; onYes: () => vo
       dismissKey={false}
       width={60}
       commands={[
-        { name: "confirm.yes", desc: "oui", run: props.onYes },
-        { name: "confirm.no", desc: "non", run: props.onNo },
+        { name: "confirm.yes", desc: "yes", run: props.onYes },
+        { name: "confirm.no", desc: "no", run: props.onNo },
       ]}
       bindings={[{ key: key("confirm.yes"), cmd: "confirm.yes" }, { key: key("confirm.no"), cmd: "confirm.no" }]}
     >

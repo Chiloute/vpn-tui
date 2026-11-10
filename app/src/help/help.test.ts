@@ -14,7 +14,7 @@ test("chaque vue a rôle, commandes et section kill switch", () => {
     expect(v.role.length).toBeGreaterThan(10);
     expect(v.commands.length).toBeGreaterThan(0);
   }
-  expect(killswitch.states.map((s) => s.label)).toEqual(["DÉSARMÉ", "ARMÉ", "VERROUILLÉ", "RECONNEXION"]);
+  expect(killswitch.states.map((s) => s.label)).toEqual(["DISARMED", "ARMED", "LOCKED", "RECONNECTING"]);
   expect(killswitch.panicOff).toContain("nft delete table inet vpn_tui");
 });
 
@@ -32,7 +32,7 @@ test("resolveBindings : défauts et surcharge", () => {
 });
 
 test("conflit de touches vue + global détecté", () => {
-  expect(() => resolveBindings({ keybinds: { ...defaults, "profiles.import": "q" } })).toThrow(/Conflit.*« q »/);
+  expect(() => resolveBindings({ keybinds: { ...defaults, "profiles.import": "q" } })).toThrow(/Key conflict.*"q"/);
 });
 
 test("surcharge utilisateur via loadMergedProjectConfig", async () => {

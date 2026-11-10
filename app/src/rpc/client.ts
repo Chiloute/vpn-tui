@@ -20,7 +20,7 @@ ajv.addSchema(schema);
 const ref = (def: string) => `${schema.$id}#/$defs/${def}`;
 const validator = (def: string) => {
   const v = ajv.getSchema(ref(def));
-  if (!v) throw new Error(`schéma inconnu : ${def}`);
+  if (!v) throw new Error(`unknown schema: ${def}`);
   return v;
 };
 const validateRequest = validator("request");
@@ -37,7 +37,7 @@ export async function call(
   const req: Record<string, unknown> = { jsonrpc: "2.0", id, method };
   if (params !== undefined) req.params = params;
   if (!validateRequest(req)) {
-    throw new TransportError(`requête invalide : ${ajv.errorsText(validateRequest.errors)}`);
+    throw new TransportError(`invalid request: ${ajv.errorsText(validateRequest.errors)}`);
   }
   const path = opts.socket ?? process.env.VPN_TUI_SOCKET ?? DEFAULT_SOCKET;
   const line = await exchange(path, JSON.stringify(req) + "\n", opts.timeoutMs ?? 5000);
@@ -46,15 +46,15 @@ export async function call(
   try {
     res = JSON.parse(line);
   } catch {
-    throw new TransportError("réponse non JSON");
+    throw new TransportError("response is not JSON");
   }
   if (!validateResponse(res)) {
-    throw new TransportError(`réponse invalide : ${ajv.errorsText(validateResponse.errors)}`);
+    throw new TransportError(`invalid response: ${ajv.errorsText(validateResponse.errors)}`);
   }
   if (res.error) throw new RpcError(res.error.code, res.error.message);
   const validateResult = validator(`result_${method}`);
   if (!validateResult(res.result)) {
-    throw new TransportError(`résultat invalide : ${ajv.errorsText(validateResult.errors)}`);
+    throw new TransportError(`invalid result: ${ajv.errorsText(validateResult.errors)}`);
   }
   return res.result;
 }
@@ -68,9 +68,9 @@ function exchange(path: string, data: string, timeoutMs: number): Promise<string
       sock.destroy();
       reject(new TransportError(msg));
     };
-    sock.setTimeout(timeoutMs, () => fail("délai dépassé"));
+    sock.setTimeout(timeoutMs, () => fail("timed out"));
     sock.setEncoding("utf8");
-    sock.on("error", (e) => fail(`daemon injoignable (${path}) : ${e.message}`));
+    sock.on("error", (e) => fail(`daemon unreachable (${path}): ${e.message}`));
     sock.on("connect", () => sock.write(data));
     sock.on("data", (chunk: string) => {
       buf += chunk;
@@ -78,9 +78,9 @@ function exchange(path: string, data: string, timeoutMs: number): Promise<string
       if (nl >= 0) {
         sock.destroy();
         resolve(buf.slice(0, nl));
-      } else if (buf.length > 65536) fail("réponse trop grande");
+      } else if (buf.length > 65536) fail("response too large");
     });
-    sock.on("close", () => fail("connexion fermée sans réponse")); // no-op si déjà réglé
+    sock.on("close", () => fail("connection closed without a response")); // no-op si déjà réglé
   });
 }
 
@@ -117,20 +117,20 @@ export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = 
     try {
       msg = JSON.parse(l);
     } catch {
-      return err("ligne non JSON ignorée");
+      return err("non-JSON line ignored");
     }
     if (!acked) {
-      if (!validateResponse(msg) || msg.id !== req.id) return fatal("réponse d'abonnement invalide");
-      if (msg.error) return fatal(`abonnement refusé (${msg.error.code}) : ${msg.error.message}`);
+      if (!validateResponse(msg) || msg.id !== req.id) return fatal("invalid subscription response");
+      if (msg.error) return fatal(`subscription refused (${msg.error.code}): ${msg.error.message}`);
       if (!validator("result_events_subscribe")(msg.result)) return fatal("ack d'abonnement invalide");
       acked = true;
       return opts.onOpen?.();
     }
-    if (!validateNotification(msg)) return err(`notification invalide ignorée : ${ajv.errorsText(validateNotification.errors)}`);
+    if (!validateNotification(msg)) return err(`invalid notification ignored: ${ajv.errorsText(validateNotification.errors)}`);
     onEvent(msg.params as RpcEvent);
   };
   sock.setEncoding("utf8");
-  sock.on("error", (e) => fatal(`daemon injoignable (${path}) : ${e.message}`));
+  sock.on("error", (e) => fatal(`daemon unreachable (${path}): ${e.message}`));
   sock.on("connect", () => sock.write(JSON.stringify(req) + "\n"));
   sock.on("data", (chunk: string) => {
     buf += chunk;
