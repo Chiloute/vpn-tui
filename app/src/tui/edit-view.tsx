@@ -12,7 +12,7 @@ import { buildForm, checkEdit, type Errors } from "./validate";
 
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Câblage commun création / édition : navigation, annulation confirmée si modifié, erreurs par champ et du daemon. */
+/** Shared create / edit wiring: navigation, confirmed cancel if modified, per-field and daemon errors. */
 function useFormView(o: { fields: Field[]; values: Values; set: (id: string, v: string) => void; submit: () => void; leave: () => void }) {
   const { bindings } = useTui();
   const nav = createFormNav(o.fields);
@@ -26,7 +26,7 @@ function useFormView(o: { fields: Field[]; values: Values; set: (id: string, v: 
     "edit.cancel": () => (JSON.stringify(o.values) === initial ? o.leave() : setAskDiscard(true)),
   }, usePane().target);
   const discard = (
-    <Confirm open={askDiscard()} message="Abandonner les modifications non enregistrées ?" onNo={() => setAskDiscard(false)} onYes={() => { setAskDiscard(false); o.leave(); }} />
+    <Confirm open={askDiscard()} message="Discard unsaved changes?" onNo={() => setAskDiscard(false)} onYes={() => { setAskDiscard(false); o.leave(); }} />
   );
   return { nav, discard };
 }
@@ -47,27 +47,27 @@ function CreateForm() {
   const proto = [{ value: "udp", label: "udp" }, { value: "tcp", label: "tcp" }];
   const fields: Field[] = [
     { kind: "tabs", id: "type", label: "Type", items: [{ value: "openvpn", label: "OpenVPN" }, { value: "wireguard", label: "WireGuard" }] },
-    { kind: "text", id: "name", label: "Nom" },
-    { kind: "text", id: "id", label: "Identifiant (opt.)", placeholder: "déduit du nom" },
-    { kind: "text", id: "remote", label: "Serveur", when: ovpn },
+    { kind: "text", id: "name", label: "Name" },
+    { kind: "text", id: "id", label: "Id (opt.)", placeholder: "derived from the name" },
+    { kind: "text", id: "remote", label: "Server", when: ovpn },
     { kind: "text", id: "port", label: "Port", when: ovpn },
-    { kind: "choice", id: "proto", label: "Protocole", items: proto, when: ovpn },
+    { kind: "choice", id: "proto", label: "Protocol", items: proto, when: ovpn },
     { kind: "area", id: "ca", label: "ca (PEM)", when: ovpn },
     { kind: "area", id: "cert", label: "cert (PEM)", when: ovpn },
-    { kind: "secret", id: "key", label: "key (PEM)", placeholder: "collez le bloc PEM (masqué)", when: ovpn },
-    { kind: "secret", id: "tlsCrypt", label: "tls-crypt (opt.)", placeholder: "collez le bloc (masqué)", when: ovpn },
-    { kind: "secret", id: "tlsAuth", label: "tls-auth (opt.)", placeholder: "collez le bloc (masqué)", when: ovpn },
-    { kind: "text", id: "username", label: "Utilisateur (opt.)", when: ovpn },
-    { kind: "secret", id: "password", label: "Mot de passe (opt.)", when: ovpn },
+    { kind: "secret", id: "key", label: "key (PEM)", placeholder: "paste the PEM block (masked)", when: ovpn },
+    { kind: "secret", id: "tlsCrypt", label: "tls-crypt (opt.)", placeholder: "paste the block (masked)", when: ovpn },
+    { kind: "secret", id: "tlsAuth", label: "tls-auth (opt.)", placeholder: "paste the block (masked)", when: ovpn },
+    { kind: "text", id: "username", label: "Username (opt.)", when: ovpn },
+    { kind: "secret", id: "password", label: "Password (opt.)", when: ovpn },
     { kind: "text", id: "address", label: "Address", placeholder: "10.8.0.2/32", when: wg },
     { kind: "text", id: "dns", label: "DNS (opt.)", placeholder: "10.8.0.1", when: wg },
     { kind: "secret", id: "privateKey", label: "Private key", when: wg },
     { kind: "text", id: "publicKey", label: "Peer public key", when: wg },
-    { kind: "text", id: "endpoint", label: "Endpoint", placeholder: "vpn.exemple.org:51820", when: wg },
+    { kind: "text", id: "endpoint", label: "Endpoint", placeholder: "vpn.example.org:51820", when: wg },
     { kind: "text", id: "allowedIPs", label: "Allowed IPs", placeholder: "10.10.0.0/16, 10.129.0.0/16", when: wg },
     { kind: "secret", id: "presharedKey", label: "Preshared (opt.)", when: wg },
     { kind: "text", id: "keepalive", label: "Keepalive (opt.)", placeholder: "25", when: wg },
-    { kind: "button", id: "go", label: "Créer le profil" },
+    { kind: "button", id: "go", label: "Create profile" },
   ];
   const set = (id: string, v: string) => { setValues(id, v); if (errors()[id]) setErrors({ ...errors(), [id]: "" }); };
   async function submit() {
@@ -81,15 +81,15 @@ function CreateForm() {
       return;
     }
     const pid = await store.createProfile(r.form);
-    if (!pid) return setDaemonErr(split(store.getState().lastError ?? "Création refusée par le daemon"));
-    notify(`Profil ${pid} créé`, { kind: "success" });
+    if (!pid) return setDaemonErr(split(store.getState().lastError ?? "Creation rejected by the daemon"));
+    notify(`Profile ${pid} created`, { kind: "success" });
     setSelectedId(pid);
     setCurrentView("profiles");
   }
   const view = useFormView({ fields, values, set, submit: () => void submit(), leave: () => setCurrentView("profiles") });
   return (
     <>
-      <Header title="Nouveau profil" />
+      <Header title="New profile" />
       <ErrorLines lines={daemonErr} />
       <Form fields={fields} nav={view.nav} values={values} set={set} errors={errors()} />
       {view.discard}
@@ -98,7 +98,7 @@ function CreateForm() {
 }
 
 type Ks = { enabled: boolean; allow_internet: boolean; block_ipv6: boolean };
-// Le daemon renvoie un objet ; le type TS de store/banner.ts annonce un booléen.
+// The daemon returns an object; the TS type in store/banner.ts declares a boolean.
 const ksOf = (p: Profile): Ks => {
   const k = p.killswitch as unknown;
   return typeof k === "object" && k ? (k as Ks) : { enabled: !!k, allow_internet: false, block_ipv6: false };
@@ -108,7 +108,7 @@ const flag = (b: boolean) => (b ? "1" : "0");
 function EditForm() {
   const { store, state } = useTui();
   const p = state().profiles.find((x) => x.id === selectedId());
-  if (!p) return <><Header title="Édition" /><text fg={theme.muted}>Profil introuvable.</text></>;
+  if (!p) return <><Header title="Edit" /><text fg={theme.muted}>Profile not found.</text></>;
   const ks = ksOf(p);
   const [values, setValues] = createStore<Values>({
     name: p.name, tags: p.tags.join(", "), color: p.color,
@@ -118,23 +118,23 @@ function EditForm() {
   });
   const [errors, setErrors] = createSignal<Errors>({});
   const [daemonErr, setDaemonErr] = createSignal<string[]>([]);
-  const list = (a: string[]) => (a.length ? a.join(", ") : "aucun");
+  const list = (a: string[]) => (a.length ? a.join(", ") : "none");
   const manual = p.scope.cidrs.filter((c) => !p.scope.learned.includes(c));
   const fields: Field[] = [
-    { kind: "note", text: () => `Type ${p.type} et configuration non modifiables : réimportez le fichier pour les changer.` },
-    { kind: "text", id: "name", label: "Nom" },
-    { kind: "text", id: "tags", label: "Tags", placeholder: "séparés par des virgules" },
-    { kind: "color", id: "color", label: "Couleur" },
+    { kind: "note", text: () => `Type ${p.type} and configuration cannot be changed: re-import the file to change them.` },
+    { kind: "text", id: "name", label: "Name" },
+    { kind: "text", id: "tags", label: "Tags", placeholder: "comma-separated" },
+    { kind: "color", id: "color", label: "Color" },
     { kind: "area", id: "cidrs", label: "Scope cidrs", rows: 3 },
-    { kind: "note", text: () => `manuel : ${list(manual)} | appris : ${list(p.scope.learned)}` },
+    { kind: "note", text: () => `manual: ${list(manual)} | learned: ${list(p.scope.learned)}` },
     { kind: "area", id: "exclude", label: "Scope exclude", rows: 2 },
     { kind: "toggle", id: "ks_enabled", label: "Kill switch" },
-    { kind: "note", text: () => "Kill switch désactivé : le scope ne sera pas protégé.", color: theme.warning, when: () => values.ks_enabled !== "1" },
+    { kind: "note", text: () => "Kill switch disabled: the scope will not be protected.", color: theme.warning, when: () => values.ks_enabled !== "1" },
     { kind: "toggle", id: "ks_allow", label: "allow_internet" },
     { kind: "toggle", id: "ks_ipv6", label: "block_ipv6" },
-    { kind: "text", id: "dns", label: "DNS servers", placeholder: "séparés par des virgules" },
+    { kind: "text", id: "dns", label: "DNS servers", placeholder: "comma-separated" },
     { kind: "toggle", id: "force", label: "DNS force" },
-    { kind: "button", id: "go", label: "Enregistrer" },
+    { kind: "button", id: "go", label: "Save" },
   ];
   const set = (id: string, v: string) => { setValues(id, v); if (errors()[id]) setErrors({ ...errors(), [id]: "" }); };
   async function submit() {
@@ -157,14 +157,14 @@ function EditForm() {
       await store.updateProfile(p!.id, patch);
       const err = store.getState().lastError;
       if (err) return setDaemonErr(split(err));
-      notify(`Profil ${p!.id} mis à jour`, { kind: "success" });
+      notify(`Profile ${p!.id} updated`, { kind: "success" });
     }
     setCurrentView("detail");
   }
   const view = useFormView({ fields, values, set, submit: () => void submit(), leave: () => setCurrentView("detail") });
   return (
     <>
-      <Header title={`Édition : ${p.name}`} />
+      <Header title={`Edit: ${p.name}`} />
       <ErrorLines lines={daemonErr} />
       <Form fields={fields} nav={view.nav} values={values} set={set} errors={errors()} />
       {view.discard}

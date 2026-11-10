@@ -68,7 +68,7 @@ func parsePrefixes(what string, l []string) (v4, v6 []netip.Prefix, err error) {
 	for _, c := range l {
 		p, err := netip.ParsePrefix(c)
 		if err != nil || p.Addr().Zone() != "" || p.Addr().Is4In6() {
-			return nil, nil, fmt.Errorf("nft: %s : CIDR invalide %q", what, c)
+			return nil, nil, fmt.Errorf("nft: %s : invalid CIDR %q", what, c)
 		}
 		if p = p.Masked(); p.Addr().Is4() {
 			v4 = append(v4, p)
@@ -82,16 +82,16 @@ func parsePrefixes(what string, l []string) (v4, v6 []netip.Prefix, err error) {
 // Build is pure: it validates the spec and returns the ruleset, no I/O.
 func Build(s state.Spec, m Mode) (Ruleset, error) {
 	if s.Profile == nil {
-		return Ruleset{}, errors.New("nft: profil manquant")
+		return Ruleset{}, errors.New("nft: missing profile")
 	}
 	if m != Armed && m != Locked {
-		return Ruleset{}, errors.New("nft: mode inconnu")
+		return Ruleset{}, errors.New("nft: unknown mode")
 	}
 	var eps []Rule
 	for _, e := range s.Endpoints {
 		ip := e.IP.Unmap()
 		if !ip.IsValid() || ip.Zone() != "" || e.Port < 1 || e.Port > 65535 || (e.Proto != "udp" && e.Proto != "tcp") {
-			return Ruleset{}, fmt.Errorf("nft: endpoint invalide %v", e)
+			return Ruleset{}, fmt.Errorf("nft: invalid endpoint %v", e)
 		}
 		eps = append(eps, accept(Rule{Host: ip, Proto: e.Proto, Ports: []int{e.Port}}))
 	}
@@ -105,7 +105,7 @@ func Build(s state.Spec, m Mode) (Ruleset, error) {
 	}
 
 	if !ifaceRe.MatchString(s.Iface) {
-		return Ruleset{}, fmt.Errorf("nft: interface invalide %q (armed sans tunnel interdit)", s.Iface)
+		return Ruleset{}, fmt.Errorf("nft: invalid interface %q (armed without tunnel forbidden)", s.Iface)
 	}
 	k, sc := s.Profile.Killswitch, s.Profile.Scope
 	s4, s6, err := parsePrefixes("scope.cidrs", sc.CIDRs)

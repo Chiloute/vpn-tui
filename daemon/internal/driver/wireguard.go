@@ -42,7 +42,7 @@ func (d WireGuard) tunnel(ctx context.Context, p *profile.Profile, l *wg.Link) *
 // Adopt re-attaches to the interface left by a previous daemon.
 func (d WireGuard) Adopt(ctx context.Context, p *profile.Profile, iface string, _ int) (state.Tunnel, state.Info, error) {
 	if iface != Iface {
-		return nil, state.Info{}, fmt.Errorf("interface inattendue %q", iface)
+		return nil, state.Info{}, fmt.Errorf("unexpected interface %q", iface)
 	}
 	l, err := wg.Adopt(iface)
 	if err != nil {
@@ -89,25 +89,25 @@ func (d WireGuard) Up(ctx context.Context, p *profile.Profile, s state.Secrets, 
 		return nil, state.Info{}, err
 	}
 	if s.PrivateKey == "" {
-		return nil, state.Info{}, fmt.Errorf("%w : clé privée absente", ErrSecrets)
+		return nil, state.Info{}, fmt.Errorf("%w: missing private key", ErrSecrets)
 	}
 	aps := make([]netip.AddrPort, len(c.Peers))
 	next := 0
 	for i, pe := range c.Peers {
 		if pe.HasPresharedKey && s.PresharedKey == "" {
-			return nil, state.Info{}, fmt.Errorf("%w : clé pré-partagée absente", ErrSecrets)
+			return nil, state.Info{}, fmt.Errorf("%w: missing preshared key", ErrSecrets)
 		}
 		if pe.Endpoint == "" {
 			continue
 		}
 		if next >= len(eps) {
-			return nil, state.Info{}, errors.New("endpoints résolus incohérents avec le profil")
+			return nil, state.Info{}, errors.New("resolved endpoints inconsistent with the profile")
 		}
 		aps[i] = netip.AddrPortFrom(eps[next].IP, uint16(eps[next].Port))
 		next++
 	}
 	if next != len(eps) {
-		return nil, state.Info{}, errors.New("endpoints résolus incohérents avec le profil")
+		return nil, state.Info{}, errors.New("resolved endpoints inconsistent with the profile")
 	}
 	l, err := wg.Up(ctx, Iface, c, s.PrivateKey, s.PresharedKey, aps)
 	if err != nil {

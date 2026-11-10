@@ -48,7 +48,7 @@ function harness(o: { status?: Status; profiles?: any[]; handlers?: Record<strin
 const methods = (h: { calls: { method: string }[] }) => h.calls.map((c) => c.method);
 const tick = () => Bun.sleep(30);
 
-test("start : refresh, logs 7j, abonnement, réabonnement après coupure, events plafonnés", async () => {
+test("start: refresh, 7d logs, subscription, resubscribe after cut, capped events", async () => {
   const h = harness({ status: status({ lhost: "10.8.0.2" }) });
   await h.store.start();
   expect(methods(h).slice(0, 3)).toEqual(["status", "list", "logs"]);
@@ -69,7 +69,7 @@ test("start : refresh, logs 7j, abonnement, réabonnement après coupure, events
   expect(h.subs.length).toBe(2);
 });
 
-test("scope_learned -> pendingScope avec diff, puis acceptScope", async () => {
+test("scope_learned -> pendingScope with diff, then acceptScope", async () => {
   const h = harness({ profiles: [profile("a", { scope: { cidrs: ["10.0.0.0/24"], exclude: [], learned: [] } })] });
   await h.store.start();
   h.emit(ev("scope_learned", "10.0.0.0/24,10.1.0.0/24"));
@@ -80,7 +80,7 @@ test("scope_learned -> pendingScope avec diff, puis acceptScope", async () => {
   h.store.stop();
 });
 
-test("toggle : up sans secrets, up avec secrets (90 s), down si actif, busy remis à null", async () => {
+test("toggle: up without secrets, up with secrets (90 s), down if active, busy reset to null", async () => {
   const h = harness({ profiles: [profile("a"), profile("b", { has_secrets: true })] });
   const busy: any[] = [];
   h.store.onChange((s) => busy.push(s.busy));
@@ -92,7 +92,7 @@ test("toggle : up sans secrets, up avec secrets (90 s), down si actif, busy remi
   expect(h.store.getState().busy).toBeNull();
 
   await h.store.toggle("b");
-  expect(h.store.getState().lastError).toMatch(/introuvables/);
+  expect(h.store.getState().lastError).toMatch(/not found/);
   h.setSecrets({ username: "u", password: "p" });
   await h.store.toggle("b");
   expect(h.calls.filter((c) => c.method === "up")[1]!.params).toEqual({ id: "b", secrets: { username: "u", password: "p" } });
@@ -115,7 +115,7 @@ test("panicOff, down, updateProfile, deleteProfile", async () => {
   expect(h.deleted).toEqual(["a"]);
 });
 
-test("import : secrets au keyring ; rollback si le stockage échoue ; erreur sans secret", async () => {
+test("import: secrets to keyring; rollback if storage fails; error without secret", async () => {
   const ovpn = "client\nremote h 1194\n<auth-user-pass>\nbob\nhunter2pass\n</auth-user-pass>\n";
   const h = harness();
   await h.store.importProfile({ filename: "x.ovpn", content: ovpn, name: "X" });
@@ -130,25 +130,25 @@ test("import : secrets au keyring ; rollback si le stockage échoue ; erreur san
   });
   await store.importProfile({ filename: "x.ovpn", content: ovpn, name: "X" });
   expect(calls).toContain("profile_delete");
-  expect(store.getState().lastError).toMatch(/import annulé/);
+  expect(store.getState().lastError).toMatch(/import cancelled/);
   expect(store.getState().busy).toBeNull();
 
-  const bad = await h.store.importProfile({ filename: "x.txt", content: "rien" });
+  const bad = await h.store.importProfile({ filename: "x.txt", content: "nothing" });
   expect(bad).toBeUndefined();
-  expect(h.store.getState().lastError).toMatch(/non reconnu/);
-  expect("error" in previewImport({ filename: "x.txt", content: "rien" })).toBe(true);
+  expect(h.store.getState().lastError).toMatch(/unrecognized/);
+  expect("error" in previewImport({ filename: "x.txt", content: "nothing" })).toBe(true);
   const pv: any = previewImport({ filename: "x.ovpn", content: ovpn });
   expect(pv.preview).toEqual({ type: "openvpn", id: "x", name: "x", endpoint: "h 1194", hasSecrets: true });
 });
 
-test("daemon refuse l'import : lastError français, rien dans le keyring", async () => {
-  const h = harness({ handlers: { profile_import: () => { throw new RpcError(-32006, "profil déjà existant"); } } });
+test("daemon rejects the import: lastError passed through, nothing in the keyring", async () => {
+  const h = harness({ handlers: { profile_import: () => { throw new RpcError(-32006, "profile already exists"); } } });
   await h.store.importProfile({ filename: "x.ovpn", content: "client\nremote h 1194\n" });
-  expect(h.store.getState().lastError).toContain("profil déjà existant");
+  expect(h.store.getState().lastError).toContain("profile already exists");
   expect(h.stored).toEqual([]);
 });
 
-test("createProfile OpenVPN : contenu valide, secrets au keyring, rien dans profile_import", async () => {
+test("createProfile OpenVPN: valid content, secrets to keyring, nothing in profile_import", async () => {
   const h = harness();
   await h.store.createProfile({
     name: "Mon VPN", remote: "vpn.example.org", port: 1194, proto: "udp",
@@ -164,7 +164,7 @@ test("createProfile OpenVPN : contenu valide, secrets au keyring, rien dans prof
   expect(h.store.getState().lastError).toBeNull();
 });
 
-test("createProfile WireGuard : contenu passe detectType/extractSecrets, pas de secret envoyé", async () => {
+test("createProfile WireGuard: content passes detectType/extractSecrets, no secret sent", async () => {
   const h = harness();
   await h.store.createProfile({
     name: "wg1", address: "10.0.0.2/32", dns: ["1.1.1.1"], privateKey: WG_PRIV,
@@ -175,13 +175,13 @@ test("createProfile WireGuard : contenu passe detectType/extractSecrets, pas de 
   expect(sent.content).not.toContain(WG_PRIV);
   expect(sent.content).not.toContain(WG_PSK);
   expect(h.stored).toEqual([["wg1", { private_key: WG_PRIV, preshared_key: WG_PSK }]]);
-  // le contenu brut produit est bien reconnu
+  // the raw content produced is recognized
   const sentBack = sent.content as string;
   expect(detectType(sentBack, "x.conf")).toBe("wireguard");
   expect(extractSecrets("wireguard", sentBack.replace(/@keyring/, WG_PRIV).replace(/@keyring/, WG_PSK)).secrets).toEqual({ private_key: WG_PRIV, preshared_key: WG_PSK });
 });
 
-test("createProfile : un secret invalide n'apparaît pas dans lastError", async () => {
+test("createProfile: an invalid secret does not appear in lastError", async () => {
   const h = harness();
   await h.store.createProfile({
     name: "wg2", address: "10.0.0.2/32", privateKey: "TOPSECRETbad",
@@ -192,19 +192,19 @@ test("createProfile : un secret invalide n'apparaît pas dans lastError", async 
   expect(err).not.toContain("TOPSECRETbad");
 });
 
-test("bannerModel : tous les états", () => {
+test("bannerModel: all states", () => {
   const now = Date.parse("2026-01-01T10:01:05Z");
   const since = "2026-01-01T10:00:00Z";
   const ps = [profile("a", { scope: { cidrs: ["10.0.0.0/8"], exclude: [], learned: [] } })];
   const ok = bannerModel(status({ state: "armed", profile: "a", killswitch: true, lhost: "10.8.0.2", scope: ["10.0.0.0/8"], since, rx_bytes: 3000, tx_bytes: 1000 }), ps, null, { now, prev: { rx: 1000, tx: 0, at: now - 2000 } });
-  expect(ok).toMatchObject({ label: "● CONNECTÉ a", tone: "ok", killswitch: true, lhost: "10.8.0.2", uptime: "00:01:05", rate: { rx: 1000, tx: 500 } });
+  expect(ok).toMatchObject({ label: "● CONNECTED a", tone: "ok", killswitch: true, lhost: "10.8.0.2", uptime: "00:01:05", rate: { rx: 1000, tx: 500 } });
   expect(ok.scope.warning).toBeNull();
   expect(bannerModel(status({ state: "armed", profile: "a", killswitch: false }), ps, null).tone).toBe("danger");
-  expect(bannerModel(status({ state: "armed", profile: "z", killswitch: true }), ps, null).scope.warning).toBe("pas de scope");
+  expect(bannerModel(status({ state: "armed", profile: "z", killswitch: true }), ps, null).scope.warning).toBe("no scope");
   const rc = bannerModel(status({ state: "reconnecting", profile: "a", reconnect: { attempt: 2, max: 10 } }), ps, null);
-  expect([rc.label, rc.tone]).toEqual(["◐ RECONNEXION 2/10", "warn"]);
+  expect([rc.label, rc.tone]).toEqual(["◐ RECONNECTING 2/10", "warn"]);
   const lk = bannerModel(status({ state: "locked" }), ps, null);
-  expect([lk.label, lk.tone]).toEqual(["■ VERROUILLÉ", "danger"]);
+  expect([lk.label, lk.tone]).toEqual(["■ LOCKED", "danger"]);
   const dis = bannerModel(status(), ps, null);
-  expect([dis.label, dis.tone, dis.uptime, dis.rate]).toEqual(["○ DÉCONNECTÉ", "neutral", null, null]);
+  expect([dis.label, dis.tone, dis.uptime, dis.rate]).toEqual(["○ DISCONNECTED", "neutral", null, null]);
 });

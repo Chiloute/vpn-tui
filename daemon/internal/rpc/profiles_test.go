@@ -167,7 +167,7 @@ func TestProfileUpdateKillswitch(t *testing.T) {
 	}
 	for _, want := range []string{"enabled = true", "allow_internet = false", "block_ipv6 = true"} {
 		if !strings.Contains(string(b), want) {
-			t.Fatalf("toml sans %q : %s", want, b)
+			t.Fatalf("toml without %q: %s", want, b)
 		}
 	}
 	if req(t, path, "profile_update", map[string]any{"id": "w", "killswitch": map[string]any{"enabled": true, "allow_internet": true, "block_ipv6": true, "bogus": 1}})["error"] == nil {

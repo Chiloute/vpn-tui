@@ -3,25 +3,25 @@ import { call, subscribe, type RpcEvent } from "../rpc/client";
 import { writeLhost } from "../lhost";
 
 const TITLES: Record<string, [string, "critical" | "normal"]> = {
-  up: ["VPN connecté", "normal"],
-  down: ["VPN déconnecté", "normal"],
-  drop: ["VPN : tunnel perdu", "critical"],
-  reconnect: ["VPN : reconnexion", "normal"],
-  lock: ["VPN verrouillé", "critical"],
-  panic_off: ["VPN : panic-off", "critical"],
-  scope_learned: ["VPN : scope appris", "normal"],
+  up: ["VPN connected", "normal"],
+  down: ["VPN disconnected", "normal"],
+  drop: ["VPN: tunnel lost", "critical"],
+  reconnect: ["VPN: reconnecting", "normal"],
+  lock: ["VPN locked", "critical"],
+  panic_off: ["VPN: panic-off", "critical"],
+  scope_learned: ["VPN: scope learned", "normal"],
 };
 
-/** Retire les caractères de contrôle, tronque à 200 caractères. */
+/** Strips control characters, truncates to 200 characters. */
 export function clean(s: string, max = 200): string {
   return [...s.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim()].slice(0, max).join("");
 }
 
-/** Arguments de notify-send pour un événement, ou null s'il n'est pas notifiable. */
+/** notify-send arguments for an event, or null if it is not notifiable. */
 export function notifyArgs(e: RpcEvent): string[] | null {
   const t = TITLES[e.kind];
   if (!t) return null;
-  const body = clean([e.profile ?? "", e.detail].filter(Boolean).join(" : "));
+  const body = clean([e.profile ?? "", e.detail].filter(Boolean).join(": "));
   return ["-a", "vpn-tui", "-u", t[1], "--", t[0], body];
 }
 
@@ -33,7 +33,7 @@ export type NotifyOpts = {
   warn?: (s: string) => void;
 };
 
-/** Boucle d'abonnement ; ne rend la main qu'à l'abort du signal. */
+/** Subscription loop; only returns when the signal is aborted. */
 export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
   const bin = o.notifySend ?? process.env.VPN_TUI_NOTIFY_SEND ?? "notify-send";
   const sleep = o.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -51,7 +51,7 @@ export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
     p.on("error", (e) => {
       if (warned) return;
       warned = true;
-      warn(`Avertissement : ${bin} introuvable ou inutilisable (${e.message}), notifications désactivées`);
+      warn(`Warning: ${bin} not found or unusable (${e.message}), notifications disabled`);
     });
     p.unref();
   };
@@ -79,7 +79,7 @@ export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
   }
 }
 
-/** Sous-commande `vpn-tui notify` : SIGINT/SIGTERM -> sortie propre. */
+/** `vpn-tui notify` subcommand: SIGINT/SIGTERM -> clean exit. */
 export async function notifyCmd(socket?: string): Promise<number> {
   const ac = new AbortController();
   const stop = () => ac.abort();

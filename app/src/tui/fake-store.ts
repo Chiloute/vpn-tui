@@ -2,9 +2,9 @@ import { mock } from "bun:test";
 import { previewImport, type Banner, type ProfileForm, type State } from "../store";
 import type { StoreLike } from "./ctx";
 
-export const emptyBanner: Banner = { label: "○ DÉCONNECTÉ", tone: "neutral", killswitch: false, lhost: null, scope: { cidrs: [], warning: null }, uptime: null, rate: null };
+export const emptyBanner: Banner = { label: "○ DISCONNECTED", tone: "neutral", killswitch: false, lhost: null, scope: { cidrs: [], warning: null }, uptime: null, rate: null };
 
-/** Store factice : mêmes signatures, état modifiable via set(). */
+/** Fake store: same signatures, state editable via set(). */
 export function fakeStore(init: Partial<State> = {}, banner: Banner = emptyBanner) {
   let state: State = { status: null, profiles: [], events: [], pendingScope: null, busy: null, daemonReachable: true, lastError: null, ...init };
   let b = banner;

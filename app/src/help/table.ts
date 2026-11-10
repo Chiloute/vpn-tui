@@ -1,5 +1,5 @@
-// Source unique de l'aide : raccourcis, prose des vues, section Kill switch.
-// Consommée par le TUI (useBindings, modale d'aide), config/default.yaml (noms) et docs/keys.md.
+// Single source of the help: shortcuts, view prose, Kill switch section.
+// Consumed by the TUI (useBindings, help modal), config/default.yaml (names) and docs/keys.md.
 
 export type Cmd = { name: string; desc: string; defaultKey: string; shortHelp?: boolean };
 
@@ -12,116 +12,116 @@ export type View = {
   commands: Cmd[];
 };
 
-const KEY_NAMES: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→", pageup: "PgUp", pagedown: "PgDn", escape: "Esc", return: "Entrée" };
-/** "up,down,j,k" -> "↑ ↓ j k" pour l'affichage. */
+const KEY_NAMES: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→", pageup: "PgUp", pagedown: "PgDn", escape: "Esc", return: "Enter" };
+/** "up,down,j,k" -> "↑ ↓ j k" for display. */
 export const prettyKey = (key: string): string =>
   key.split(",").map((k) => KEY_NAMES[k.trim()] ?? k.trim().replace(/^shift\+(\w)$/, (_, c: string) => c.toUpperCase())).join(" ");
 
-const nav = (view: string): Cmd => ({ name: `${view}.nav`, desc: "naviguer", defaultKey: "up,down,j,k", shortHelp: true });
+const nav = (view: string): Cmd => ({ name: `${view}.nav`, desc: "navigate", defaultKey: "up,down,j,k", shortHelp: true });
 
 export const views = {
   profiles: {
     id: "profiles",
-    title: "Profils",
-    role: "Liste des profils VPN importés avec leur état. Point d'entrée du TUI.",
-    actions: ["Naviguer, monter ou couper le tunnel.", "Importer, créer, éditer ou supprimer un profil."],
-    warnings: ["Supprimer un profil demande une confirmation.", "Monter un profil arme le kill switch."],
+    title: "Profiles",
+    role: "Imported VPN profiles with their state. Entry point of the TUI.",
+    actions: ["Navigate, bring the tunnel up or down.", "Import, create, edit or delete a profile."],
+    warnings: ["Deleting a profile asks for confirmation.", "Bringing a profile up arms the kill switch."],
     commands: [
       nav("profiles"),
       { name: "profiles.toggle", desc: "up/down", defaultKey: "return", shortHelp: true },
-      { name: "profiles.detail", desc: "détail", defaultKey: "d", shortHelp: true },
-      { name: "profiles.scope", desc: "accepter le scope appris", defaultKey: "s" },
-      { name: "profiles.import", desc: "importer", defaultKey: "i", shortHelp: true },
-      { name: "profiles.new", desc: "nouveau", defaultKey: "n" },
-      { name: "profiles.edit", desc: "éditer", defaultKey: "e" },
-      { name: "profiles.delete", desc: "supprimer", defaultKey: "x" },
+      { name: "profiles.detail", desc: "detail", defaultKey: "d", shortHelp: true },
+      { name: "profiles.scope", desc: "accept learned scope", defaultKey: "s" },
+      { name: "profiles.import", desc: "import", defaultKey: "i", shortHelp: true },
+      { name: "profiles.new", desc: "new", defaultKey: "n" },
+      { name: "profiles.edit", desc: "edit", defaultKey: "e" },
+      { name: "profiles.delete", desc: "delete", defaultKey: "x" },
     ],
   },
   detail: {
     id: "detail",
-    title: "Détail",
-    role: "Détail d'un profil : routes, DNS, scope appris et état de la connexion.",
-    actions: ["Accepter le scope appris pour l'ajouter aux routes autorisées.", "Éditer le profil."],
-    warnings: ["Accepter un scope élargit ce que le tunnel peut atteindre : vérifier avant de valider."],
+    title: "Detail",
+    role: "Profile detail: routes, DNS, learned scope and connection state.",
+    actions: ["Accept the learned scope to add it to the allowed routes.", "Edit the profile."],
+    warnings: ["Accepting a scope widens what the tunnel can reach: check before confirming."],
     commands: [
-      { name: "detail.scope", desc: "accepter le scope", defaultKey: "s", shortHelp: true },
-      { name: "detail.edit", desc: "éditer", defaultKey: "e" },
-      { name: "detail.back", desc: "retour", defaultKey: "escape", shortHelp: true },
+      { name: "detail.scope", desc: "accept scope", defaultKey: "s", shortHelp: true },
+      { name: "detail.edit", desc: "edit", defaultKey: "e" },
+      { name: "detail.back", desc: "back", defaultKey: "escape", shortHelp: true },
     ],
   },
   logs: {
     id: "logs",
     title: "Logs",
-    role: "Journal des événements du daemon : connexions, reconnexions, kill switch.",
-    actions: ["Parcourir les événements récents."],
+    role: "Daemon event log: connections, reconnections, kill switch.",
+    actions: ["Browse recent events."],
     warnings: [],
     commands: [
       nav("logs"),
       { name: "logs.page", desc: "page", defaultKey: "pageup,pagedown" },
-      { name: "logs.back", desc: "retour", defaultKey: "escape", shortHelp: true },
+      { name: "logs.back", desc: "back", defaultKey: "escape", shortHelp: true },
     ],
   },
   import: {
     id: "import",
     title: "Import",
-    role: "Import d'un fichier de profil (.ovpn ou WireGuard) en trois temps : chemin, aperçu, confirmation. Les secrets vont dans le trousseau, pas sur disque.",
+    role: "Import a profile file (.ovpn or WireGuard) in three steps: path, preview, confirmation. Secrets go to the keyring, not to disk.",
     actions: [
-      "Saisir le chemin (~ accepté, Tab complète le nom), puis Entrée pour lire le fichier et afficher l'aperçu.",
-      "Ajuster le nom et l'identifiant, puis Entrée sur « Importer ».",
+      "Type the path (~ accepted, Tab completes the name), then Enter to read the file and show the preview.",
+      "Adjust the name and the id, then Enter on \"Import\".",
     ],
     warnings: [
-      "Un fichier refusé affiche le message exact du parseur ou du daemon, ligne par ligne, et rien n'est importé.",
-      "Les secrets ne sont jamais affichés.",
+      "A rejected file shows the exact parser or daemon message, line by line, and nothing is imported.",
+      "Secrets are never displayed.",
     ],
     commands: [
-      { name: "import.confirm", desc: "lire / importer", defaultKey: "return", shortHelp: true },
-      { name: "import.next", desc: "compléter / suivant", defaultKey: "tab", shortHelp: true },
-      { name: "import.prev", desc: "champ précédent", defaultKey: "shift+tab" },
-      { name: "import.cancel", desc: "annuler", defaultKey: "escape", shortHelp: true },
+      { name: "import.confirm", desc: "read / import", defaultKey: "return", shortHelp: true },
+      { name: "import.next", desc: "complete / next", defaultKey: "tab", shortHelp: true },
+      { name: "import.prev", desc: "previous field", defaultKey: "shift+tab" },
+      { name: "import.cancel", desc: "cancel", defaultKey: "escape", shortHelp: true },
     ],
   },
   edit: {
     id: "edit",
-    title: "Édition / création",
-    role: "Formulaire de création d'un profil OpenVPN ou WireGuard (n), ou d'édition du profil sélectionné (e) : nom, tags, couleur, scope, kill switch, DNS. Le type et la configuration ne sont pas modifiables : réimporter le fichier.",
+    title: "Edit",
+    role: "Form to create an OpenVPN or WireGuard profile (n), or to edit the selected profile (e): name, tags, color, scope, kill switch, DNS. The type and configuration cannot be changed: re-import the file.",
     actions: [
-      "Passer d'un champ à l'autre, Entrée sur le bouton pour enregistrer.",
-      "Les secrets (clé privée, mot de passe, blocs PEM sensibles) sont masqués et passent par le trousseau.",
+      "Move between fields, Enter on the button to save.",
+      "Secrets (private key, password, sensitive PEM blocks) are masked and go through the keyring.",
     ],
     warnings: [
-      "Annuler un formulaire modifié demande une confirmation.",
-      "Désactiver le kill switch laisse le scope non protégé.",
-      "Les lettres tapées dans un champ de saisie ne déclenchent aucun raccourci.",
+      "Cancelling a modified form asks for confirmation.",
+      "Disabling the kill switch leaves the scope unprotected.",
+      "Letters typed in an input field never trigger a shortcut.",
     ],
     commands: [
-      { name: "edit.next", desc: "champ suivant", defaultKey: "tab", shortHelp: true },
-      { name: "edit.prev", desc: "champ précédent", defaultKey: "shift+tab" },
-      { name: "edit.submit", desc: "valider le champ / bouton", defaultKey: "return" },
-      { name: "edit.save", desc: "enregistrer", defaultKey: "ctrl+s", shortHelp: true },
-      { name: "edit.cancel", desc: "annuler", defaultKey: "escape", shortHelp: true },
+      { name: "edit.next", desc: "next field", defaultKey: "tab", shortHelp: true },
+      { name: "edit.prev", desc: "previous field", defaultKey: "shift+tab" },
+      { name: "edit.submit", desc: "validate field / button", defaultKey: "return" },
+      { name: "edit.save", desc: "save", defaultKey: "ctrl+s", shortHelp: true },
+      { name: "edit.cancel", desc: "cancel", defaultKey: "escape", shortHelp: true },
     ],
   },
   help: {
     id: "help",
-    title: "Aide",
-    role: "Rappel des touches de la vue courante et du fonctionnement du kill switch.",
-    actions: ["Lire, puis fermer."],
+    title: "Help",
+    role: "Keys of the current view and how the kill switch works.",
+    actions: ["Read, then close."],
     warnings: [],
     commands: [
-      { name: "help.scroll", desc: "défiler", defaultKey: "up,down,j,k", shortHelp: true },
+      { name: "help.scroll", desc: "scroll", defaultKey: "up,down,j,k", shortHelp: true },
       { name: "help.page", desc: "page", defaultKey: "pageup,pagedown" },
-      { name: "help.close", desc: "fermer", defaultKey: "escape", shortHelp: true },
+      { name: "help.close", desc: "close", defaultKey: "escape", shortHelp: true },
     ],
   },
   confirm: {
     id: "confirm",
     title: "Confirmation",
-    role: "Fenêtre de confirmation avant une action destructrice (suppression, scope). Le panic-off exige de taper « oui ».",
-    actions: ["Répondre oui ou non."],
-    warnings: ["« y » reste réservé à la copie du LHOST : la confirmation utilise « o »."],
+    role: "Confirmation dialog before a destructive action (delete, scope). Panic-off requires typing \"yes\".",
+    actions: ["Answer yes or no."],
+    warnings: ["Press y to confirm, n or Esc to cancel."],
     commands: [
-      { name: "confirm.yes", desc: "oui", defaultKey: "o", shortHelp: true },
-      { name: "confirm.no", desc: "non", defaultKey: "n,escape", shortHelp: true },
+      { name: "confirm.yes", desc: "yes", defaultKey: "y", shortHelp: true },
+      { name: "confirm.no", desc: "no", defaultKey: "n,escape", shortHelp: true },
     ],
   },
 } as const satisfies Record<string, View>;
@@ -129,39 +129,39 @@ export const views = {
 export type ViewId = keyof typeof views;
 
 export const globalCommands: Cmd[] = [
-  { name: "global.help", desc: "aide", defaultKey: "?", shortHelp: true },
-  { name: "global.quit", desc: "quitter", defaultKey: "q", shortHelp: true },
+  { name: "global.help", desc: "help", defaultKey: "?", shortHelp: true },
+  { name: "global.quit", desc: "quit", defaultKey: "q", shortHelp: true },
   { name: "global.panic", desc: "panic-off", defaultKey: "!" },
   { name: "global.logs", desc: "logs", defaultKey: "shift+l" },
-  { name: "global.copyLhost", desc: "copier LHOST", defaultKey: "y" },
+  { name: "global.copyLhost", desc: "copy LHOST", defaultKey: "c" },
 ];
 
 export const killswitch = {
   title: "Kill switch",
-  intro: "Le daemon pose une table nftables `inet vpn_tui` qui coupe tout trafic hors tunnel.",
+  intro: "The daemon installs an nftables table `inet vpn_tui` that blocks all traffic outside the tunnel.",
   states: [
     {
       id: "disarmed",
-      label: "DÉSARMÉ",
-      desc: "Aucun tunnel, aucune règle. Rien n'est bloqué.",
+      label: "DISARMED",
+      desc: "No tunnel, no rule. Nothing is blocked.",
     },
     {
       id: "armed",
-      label: "ARMÉ",
-      desc: "Tunnel établi. Tout trafic hors du tunnel est bloqué ; seuls le tunnel et le lien local passent.",
+      label: "ARMED",
+      desc: "Tunnel up. All traffic outside the tunnel is blocked; only the tunnel and the local link pass.",
     },
     {
       id: "locked",
-      label: "VERROUILLÉ",
-      desc: "Tunnel perdu ou reconnexions épuisées. Tout le trafic reste bloqué, y compris hors tunnel, jusqu'à une action manuelle (up ou panic-off).",
+      label: "LOCKED",
+      desc: "Tunnel lost or reconnection attempts exhausted. All traffic stays blocked, including outside the tunnel, until a manual action (up or panic-off).",
     },
     {
       id: "reconnecting",
-      label: "RECONNEXION",
-      desc: "Tunnel perdu, nouvelle tentative en cours. Le trafic hors tunnel reste bloqué pendant les tentatives.",
+      label: "RECONNECTING",
+      desc: "Tunnel lost, retrying. Traffic outside the tunnel stays blocked during attempts.",
     },
   ],
   panicOff:
-    "panic-off supprime les règles du kill switch et rend l'accès réseau normal, avec confirmation obligatoire. " +
-    "Sans daemon, exécuter en root `vpn-tuid --panic-off` ou `nft delete table inet vpn_tui`.",
+    "panic-off removes the kill switch rules and restores normal network access; confirmation is required. " +
+    "Without the daemon, run as root `vpn-tuid --panic-off` or `nft delete table inet vpn_tui`.",
 } as const;

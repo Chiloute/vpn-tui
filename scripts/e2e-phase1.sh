@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Test e2e phase 1 : daemon vpn-tuid réel + CLI réel, sans root. Lancer depuis la racine : nix develop -c scripts/e2e-phase1.sh
-# Cas 1 dans un user namespace (uid 0 : autorisé par --group root). Cas 2 et 3 hors userns.
+# Phase 1 e2e test: real vpn-tuid daemon + real CLI, without root. Run from the repo root: nix develop -c scripts/e2e-phase1.sh
+# Case 1 in a user namespace (uid 0: allowed by --group root). Cases 2 and 3 outside the userns.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +28,7 @@ fail() {
   exit 1
 }
 
-# Lance le vrai CLI (bun via nix develop) ; code de sortie dans RC, stdout dans OUT, stderr dans ERR.
+# Runs the real CLI (bun via nix develop); exit code in RC, stdout in OUT, stderr in ERR.
 cli() {
   local sock=$1
   shift
@@ -37,7 +37,7 @@ cli() {
   ERR=$(cat "$WORK/cli.err")
 }
 
-# Daemon confiné dans $WORK (state, run, cache, marker) : jamais /run ni /var.
+# Daemon confined to $WORK (state, run, cache, marker): never /run or /var.
 start_daemon() {
   local group=$1
   rm -f "$SOCK"
@@ -46,10 +46,10 @@ start_daemon() {
   DPID=$!
   for _ in $(seq 1 50); do
     [[ -S $SOCK ]] && return 0
-    kill -0 "$DPID" 2>/dev/null || fail "le daemon s'est arrêté au démarrage (group=$group)"
+    kill -0 "$DPID" 2>/dev/null || fail "the daemon stopped at startup (group=$group)"
     sleep 0.1
   done
-  fail "socket absent après 5 s (group=$group)"
+  fail "socket missing after 5 s (group=$group)"
 }
 
 stop_daemon() {
@@ -58,7 +58,7 @@ stop_daemon() {
   DPID=""
 }
 
-# Premier groupe existant (getent) dont l'utilisateur courant n'est membre ni en principal ni en supplémentaire.
+# First existing group (getent) the current user is not a member of, neither as primary nor as supplementary group.
 pick_foreign_group() {
   local mine name
   mine=" $(id -Gn) "
@@ -71,38 +71,38 @@ pick_foreign_group() {
   return 1
 }
 
-# Cas 1, exécuté dans le userns : daemon et CLI dans le même namespace, uid 0 -> disarmed.
+# Case 1, run inside the userns: daemon and CLI in the same namespace, uid 0 -> disarmed.
 case1() {
   trap stop_daemon EXIT
   start_daemon root
   cli "$SOCK" status --json
-  [[ $RC -eq 1 ]] || fail "cas 1 : status --json exit $RC (attendu 1)"
-  [[ $OUT == *'"state":"disarmed"'* ]] || fail "cas 1 : JSON sans \"state\":\"disarmed\" : $OUT"
+  [[ $RC -eq 1 ]] || fail "case 1: status --json exit $RC (expected 1)"
+  [[ $OUT == *'"state":"disarmed"'* ]] || fail "case 1: JSON without \"state\":\"disarmed\": $OUT"
   cli "$SOCK" status
-  [[ $RC -eq 1 ]] || fail "cas 1 : status exit $RC (attendu 1)"
-  [[ $OUT == *"DÉCONNECTÉ"* ]] || fail "cas 1 : sortie sans DÉCONNECTÉ : $OUT"
-  echo "OK cas 1 : status --json exit 1 + state disarmed ; status exit 1 + DÉCONNECTÉ"
+  [[ $RC -eq 1 ]] || fail "case 1: status exit $RC (expected 1)"
+  [[ $OUT == *"DISCONNECTED"* ]] || fail "case 1: output without DISCONNECTED: $OUT"
+  echo "OK case 1: status --json exit 1 + state disarmed; status exit 1 + DISCONNECTED"
 }
 
-echo "Build du daemon..."
-(cd "$ROOT" && go build -o "$BIN" ./daemon/cmd/vpn-tuid) || fail "go build du daemon"
+echo "Building daemon..."
+(cd "$ROOT" && go build -o "$BIN" ./daemon/cmd/vpn-tuid) || fail "go build of the daemon"
 
-# Cas 1 : daemon et CLI dans un seul user namespace (uid 0 -> accès autorisé).
+# Case 1: daemon and CLI in a single user namespace (uid 0 -> access allowed).
 export -f fail cli start_daemon stop_daemon case1
-unshare -Urn bash -c 'set -euo pipefail; case1' || fail "cas 1 (user namespace)"
+unshare -Urn bash -c 'set -euo pipefail; case1' || fail "case 1 (user namespace)"
 
-# Cas 2 : daemon avec un groupe dont l'utilisateur n'est pas membre -> accès refusé (exit 3).
-FOREIGN="$(pick_foreign_group)" || fail "cas 2 : aucun groupe existant dont $(id -un) n'est pas membre"
+# Case 2: daemon with a group the user is not a member of -> access denied (exit 3).
+FOREIGN="$(pick_foreign_group)" || fail "case 2: no existing group that $(id -un) is not a member of"
 start_daemon "$FOREIGN"
 cli "$SOCK" status
-[[ $RC -eq 3 ]] || fail "cas 2 : status exit $RC (attendu 3) avec --group $FOREIGN"
-[[ $ERR == *"refusé"* ]] || fail "cas 2 : stderr sans 'refusé' : $ERR"
-echo "OK cas 2 : --group $FOREIGN (non membre) -> status exit 3 + 'refusé'"
+[[ $RC -eq 3 ]] || fail "case 2: status exit $RC (expected 3) with --group $FOREIGN"
+[[ $ERR == *"denied"* ]] || fail "case 2: stderr without 'denied': $ERR"
+echo "OK case 2: --group $FOREIGN (non-member) -> status exit 3 + 'denied'"
 
-# Cas 3 : socket inexistant -> exit 3.
+# Case 3: nonexistent socket -> exit 3.
 stop_daemon
 cli "$WORK/absent.sock" status
-[[ $RC -eq 3 ]] || fail "cas 3 : status exit $RC (attendu 3) sur socket inexistant"
-echo "OK cas 3 : socket inexistant -> status exit 3"
+[[ $RC -eq 3 ]] || fail "case 3: status exit $RC (expected 3) on nonexistent socket"
+echo "OK case 3: nonexistent socket -> status exit 3"
 
 echo "PASS"

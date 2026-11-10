@@ -1,8 +1,8 @@
-// Package wg analyse les profils WireGuard (format wg-quick restreint).
+// Package wg parses WireGuard profiles (restricted wg-quick format).
 //
-// Liste blanche stricte : aucun secret en clair n'est accepté. Le client
-// remplace PrivateKey/PresharedKey par la sentinelle "@keyring".
-// Choix DNS : les noms de domaine de recherche sont REFUSÉS (seules des IP).
+// Strict allowlist: no plaintext secret is accepted. The client
+// replaces PrivateKey/PresharedKey with the "@keyring" sentinel.
+// DNS choice: search domain names are REJECTED (IPs only).
 package wg
 
 import (
@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 )
 
-// MaxSize est la taille maximale acceptée d'un profil.
+// MaxSize is the maximum accepted size of a profile.
 const MaxSize = 16 * 1024
 
 const sentinel = "@keyring"
@@ -37,7 +37,7 @@ type Config struct {
 	Sanitized  []byte
 }
 
-// RejectError décrit un rejet de profil.
+// RejectError describes a profile rejection.
 type RejectError struct {
 	Line   int
 	Key    string
@@ -47,25 +47,25 @@ type RejectError struct {
 func (e *RejectError) Error() string {
 	switch {
 	case e.Line > 0 && e.Key != "":
-		return fmt.Sprintf("profil WireGuard refusé (ligne %d, clé %q) : %s", e.Line, e.Key, e.Reason)
+		return fmt.Sprintf("WireGuard profile rejected (line %d, key %q): %s", e.Line, e.Key, e.Reason)
 	case e.Line > 0:
-		return fmt.Sprintf("profil WireGuard refusé (ligne %d) : %s", e.Line, e.Reason)
+		return fmt.Sprintf("WireGuard profile rejected (line %d): %s", e.Line, e.Reason)
 	case e.Key != "":
-		return fmt.Sprintf("profil WireGuard refusé (clé %q) : %s", e.Key, e.Reason)
+		return fmt.Sprintf("WireGuard profile rejected (key %q): %s", e.Key, e.Reason)
 	}
-	return "profil WireGuard refusé : " + e.Reason
+	return "WireGuard profile rejected: " + e.Reason
 }
 
-const secretReason = "secret en clair : le client doit l'extraire vers le keyring"
+const secretReason = "plaintext secret: the client must move it to the keyring"
 
 var rejected = map[string]string{
-	"postup":     "script interdit",
-	"postdown":   "script interdit",
-	"preup":      "script interdit",
-	"predown":    "script interdit",
-	"saveconfig": "écriture disque interdite",
-	"table":      "routage géré par le daemon",
-	"fwmark":     "routage géré par le daemon",
+	"postup":     "script forbidden",
+	"postdown":   "script forbidden",
+	"preup":      "script forbidden",
+	"predown":    "script forbidden",
+	"saveconfig": "disk write forbidden",
+	"table":      "routing managed by the daemon",
+	"fwmark":     "routing managed by the daemon",
 }
 
 type section struct {
@@ -77,13 +77,13 @@ type section struct {
 
 func Parse(content []byte) (*Config, error) {
 	if len(content) > MaxSize {
-		return nil, &RejectError{Reason: fmt.Sprintf("fichier trop gros (max %d octets)", MaxSize)}
+		return nil, &RejectError{Reason: fmt.Sprintf("file too large (max %d bytes)", MaxSize)}
 	}
 	if !utf8.Valid(content) {
-		return nil, &RejectError{Reason: "UTF-8 invalide"}
+		return nil, &RejectError{Reason: "invalid UTF-8"}
 	}
 	if strings.IndexByte(string(content), 0) >= 0 {
-		return nil, &RejectError{Reason: "octet NUL interdit"}
+		return nil, &RejectError{Reason: "NUL byte forbidden"}
 	}
 
 	var secs []*section
@@ -97,18 +97,18 @@ func Parse(content []byte) (*Config, error) {
 		if l[0] == '[' {
 			name := strings.ToLower(l)
 			if name != "[interface]" && name != "[peer]" {
-				return nil, &RejectError{Line: n, Reason: "section inconnue " + l}
+				return nil, &RejectError{Line: n, Reason: "unknown section " + l}
 			}
 			cur = &section{name: name, line: n, kv: map[string]string{}, kl: map[string]int{}}
 			secs = append(secs, cur)
 			continue
 		}
 		if cur == nil {
-			return nil, &RejectError{Line: n, Reason: "directive hors section"}
+			return nil, &RejectError{Line: n, Reason: "directive outside a section"}
 		}
 		k, v, ok := strings.Cut(l, "=")
 		if !ok {
-			return nil, &RejectError{Line: n, Reason: "ligne invalide (attendu « Clé = valeur »)"}
+			return nil, &RejectError{Line: n, Reason: "invalid line (expected \"Key = value\")"}
 		}
 		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
 		lk := strings.ToLower(k)
@@ -123,16 +123,16 @@ func Parse(content []byte) (*Config, error) {
 			allowed = map[string]bool{"publickey": true, "presharedkey": true, "endpoint": true, "allowedips": true, "persistentkeepalive": true}
 		}
 		if !allowed[lk] {
-			return nil, &RejectError{Line: n, Key: k, Reason: "clé inconnue ou non autorisée dans " + cur.name}
+			return nil, &RejectError{Line: n, Key: k, Reason: "unknown or disallowed key in " + cur.name}
 		}
 		if _, dup := cur.kv[lk]; dup {
-			return nil, &RejectError{Line: n, Key: k, Reason: "clé dupliquée"}
+			return nil, &RejectError{Line: n, Key: k, Reason: "duplicate key"}
 		}
 		cur.kv[lk], cur.kl[lk] = v, n
 	}
 
 	if len(secs) == 0 || secs[0].name != "[interface]" {
-		return nil, &RejectError{Reason: "section [Interface] manquante ou non première"}
+		return nil, &RejectError{Reason: "[Interface] section missing or not first"}
 	}
 	cfg := &Config{}
 	var b strings.Builder
@@ -142,14 +142,14 @@ func Parse(content []byte) (*Config, error) {
 	}
 	for _, s := range secs[1:] {
 		if s.name == "[interface]" {
-			return nil, &RejectError{Line: s.line, Reason: "une seule section [Interface] autorisée"}
+			return nil, &RejectError{Line: s.line, Reason: "only one [Interface] section allowed"}
 		}
 		if err := parsePeer(s, cfg, &b); err != nil {
 			return nil, err
 		}
 	}
 	if len(cfg.Peers) == 0 {
-		return nil, &RejectError{Reason: "au moins une section [Peer] est requise"}
+		return nil, &RejectError{Reason: "at least one [Peer] section is required"}
 	}
 	cfg.Sanitized = []byte(b.String())
 	return cfg, nil
@@ -157,12 +157,12 @@ func Parse(content []byte) (*Config, error) {
 
 func parseInterface(s *section, c *Config, b *strings.Builder) error {
 	if _, ok := s.kv["privatekey"]; !ok {
-		return &RejectError{Line: s.line, Key: "PrivateKey", Reason: "PrivateKey manquante"}
+		return &RejectError{Line: s.line, Key: "PrivateKey", Reason: "missing PrivateKey"}
 	}
 	b.WriteString("PrivateKey = " + sentinel + "\n")
 	v, ok := s.kv["address"]
 	if !ok {
-		return &RejectError{Line: s.line, Key: "Address", Reason: "Address manquante"}
+		return &RejectError{Line: s.line, Key: "Address", Reason: "missing Address"}
 	}
 	ps, err := prefixes(v)
 	if err != nil {
@@ -175,20 +175,20 @@ func parseInterface(s *section, c *Config, b *strings.Builder) error {
 		for _, f := range split(v) {
 			a, err := netip.ParseAddr(f)
 			if err != nil {
-				return &RejectError{Line: s.kl["dns"], Key: "DNS", Reason: fmt.Sprintf("%q n'est pas une adresse IP (noms de domaine refusés)", f)}
+				return &RejectError{Line: s.kl["dns"], Key: "DNS", Reason: fmt.Sprintf("%q is not an IP address (domain names rejected)", f)}
 			}
 			c.DNS = append(c.DNS, a)
 			ss = append(ss, a.String())
 		}
 		if len(ss) == 0 {
-			return &RejectError{Line: s.kl["dns"], Key: "DNS", Reason: "liste vide"}
+			return &RejectError{Line: s.kl["dns"], Key: "DNS", Reason: "empty list"}
 		}
 		b.WriteString("DNS = " + strings.Join(ss, ", ") + "\n")
 	}
 	if v, ok := s.kv["mtu"]; ok {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 576 || n > 9000 {
-			return &RejectError{Line: s.kl["mtu"], Key: "MTU", Reason: "doit être un entier entre 576 et 9000"}
+			return &RejectError{Line: s.kl["mtu"], Key: "MTU", Reason: "must be an integer between 576 and 9000"}
 		}
 		c.MTU = n
 		fmt.Fprintf(b, "MTU = %d\n", n)
@@ -196,7 +196,7 @@ func parseInterface(s *section, c *Config, b *strings.Builder) error {
 	if v, ok := s.kv["listenport"]; ok {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n > 65535 {
-			return &RejectError{Line: s.kl["listenport"], Key: "ListenPort", Reason: "doit être un entier entre 0 et 65535"}
+			return &RejectError{Line: s.kl["listenport"], Key: "ListenPort", Reason: "must be an integer between 0 and 65535"}
 		}
 		c.ListenPort = n
 		fmt.Fprintf(b, "ListenPort = %d\n", n)
@@ -209,10 +209,10 @@ func parsePeer(s *section, c *Config, b *strings.Builder) error {
 	b.WriteString("\n[Peer]\n")
 	pk, ok := s.kv["publickey"]
 	if !ok {
-		return &RejectError{Line: s.line, Key: "PublicKey", Reason: "PublicKey manquante"}
+		return &RejectError{Line: s.line, Key: "PublicKey", Reason: "missing PublicKey"}
 	}
 	if raw, err := base64.StdEncoding.DecodeString(pk); err != nil || len(raw) != 32 {
-		return &RejectError{Line: s.kl["publickey"], Key: "PublicKey", Reason: "doit être une clé base64 de 32 octets"}
+		return &RejectError{Line: s.kl["publickey"], Key: "PublicKey", Reason: "must be a 32-byte base64 key"}
 	}
 	p.PublicKey = pk
 	b.WriteString("PublicKey = " + pk + "\n")
@@ -229,7 +229,7 @@ func parsePeer(s *section, c *Config, b *strings.Builder) error {
 	}
 	v, ok := s.kv["allowedips"]
 	if !ok {
-		return &RejectError{Line: s.line, Key: "AllowedIPs", Reason: "AllowedIPs manquante"}
+		return &RejectError{Line: s.line, Key: "AllowedIPs", Reason: "missing AllowedIPs"}
 	}
 	ps, err := prefixes(v)
 	if err != nil {
@@ -240,7 +240,7 @@ func parsePeer(s *section, c *Config, b *strings.Builder) error {
 	if v, ok := s.kv["persistentkeepalive"]; ok {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n > 65535 {
-			return &RejectError{Line: s.kl["persistentkeepalive"], Key: "PersistentKeepalive", Reason: "doit être un entier entre 0 et 65535"}
+			return &RejectError{Line: s.kl["persistentkeepalive"], Key: "PersistentKeepalive", Reason: "must be an integer between 0 and 65535"}
 		}
 		p.PersistentKeepalive = n
 		if n > 0 {
@@ -266,12 +266,12 @@ func prefixes(v string) ([]netip.Prefix, error) {
 	for _, f := range split(v) {
 		p, err := netip.ParsePrefix(f)
 		if err != nil {
-			return nil, fmt.Errorf("CIDR invalide %q", f)
+			return nil, fmt.Errorf("invalid CIDR %q", f)
 		}
 		out = append(out, p)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("liste vide (au moins un CIDR requis)")
+		return nil, fmt.Errorf("empty list (at least one CIDR required)")
 	}
 	return out, nil
 }
@@ -287,20 +287,20 @@ func joinP(ps []netip.Prefix) string {
 func checkEndpoint(v string) error {
 	host, port, err := net.SplitHostPort(v)
 	if err != nil || host == "" {
-		return fmt.Errorf("endpoint invalide %q (attendu hôte:port)", v)
+		return fmt.Errorf("invalid endpoint %q (expected host:port)", v)
 	}
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
-		return fmt.Errorf("port d'endpoint invalide %q", port)
+		return fmt.Errorf("invalid endpoint port %q", port)
 	}
 	if _, err := netip.ParseAddr(host); err == nil {
 		return nil
 	}
 	if len(host) > 253 {
-		return fmt.Errorf("nom d'hôte trop long")
+		return fmt.Errorf("hostname too long")
 	}
 	for _, r := range host {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '.') {
-			return fmt.Errorf("caractère interdit dans le nom d'hôte %q", host)
+			return fmt.Errorf("forbidden character in hostname %q", host)
 		}
 	}
 	return nil

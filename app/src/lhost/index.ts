@@ -6,7 +6,7 @@ export function lhostPath(): string {
   return join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "vpn-tui", "lhost");
 }
 
-/** Écrit "IP\n" (ou vide) de façon atomique, seulement si le contenu change. Ne lève jamais. */
+/** Writes "IP\n" (or empty) atomically, only if the content changes. Never throws. */
 export function writeLhost(ip: string | null, warn: (s: string) => void = console.error): void {
   const path = lhostPath();
   const content = ip ? `${ip}\n` : "";
@@ -19,6 +19,6 @@ export function writeLhost(ip: string | null, warn: (s: string) => void = consol
     writeFileSync(tmp, content);
     renameSync(tmp, path);
   } catch (e) {
-    warn(`Avertissement : écriture de ${path} impossible : ${(e as Error).message}`);
+    warn(`Warning: cannot write ${path}: ${(e as Error).message}`);
   }
 }

@@ -21,9 +21,9 @@ export function Banner() {
         when={state().daemonReachable}
         fallback={
           <box flexShrink={0}>
-            {/* avant tout refresh : ni status ni erreur reçus, le daemon n'est pas encore jugé injoignable */}
-            <Show when={state().status === null && state().lastError === null} fallback={<Badge label="daemon injoignable" color={theme.error} />}>
-              <Badge label="connexion au daemon…" color={theme.muted} />
+            {/* before any refresh: no status or error received, the daemon is not yet considered unreachable */}
+            <Show when={state().status === null && state().lastError === null} fallback={<Badge label="daemon unreachable" color={theme.error} />}>
+              <Badge label="connecting to daemon…" color={theme.muted} />
             </Show>
           </box>
         }
@@ -33,7 +33,7 @@ export function Banner() {
       <text fg={ksColor()} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>{`KILLSWITCH ${b().killswitch ? "ON" : "OFF"}`}</text>
       <text fg={theme.text} wrapMode="none" flexShrink={0}>{`LHOST ${b().lhost ?? "-"}`}</text>
       <Show when={b().scope.warning} fallback={<Show when={scope()}><text fg={theme.text} wrapMode="none" flexShrink={0}>{`scope ${scope()}`}</text></Show>}>
-        <text fg={theme.warning} wrapMode="none" flexShrink={0}>⚠ aucun scope</text>
+        <text fg={theme.warning} wrapMode="none" flexShrink={0}>⚠ no scope</text>
       </Show>
       <Show when={b().uptime}>{(u) => <text fg={theme.muted} wrapMode="none" flexShrink={0}>{u()}</text>}</Show>
       <Show when={b().rate}>

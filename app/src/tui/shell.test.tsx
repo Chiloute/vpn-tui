@@ -40,7 +40,7 @@ async function mount(store: ReturnType<typeof fakeStore>, size = { width: 100, h
 const press = async (k: string) => { if (k === "enter") t!.mockInput.pressEnter(); else if (k === "escape") t!.mockInput.pressEscape(); else t!.mockInput.pressKey(k); await frames(); };
 const type = async (s: string) => { await t!.mockInput.typeText(s); await frames(); };
 const frame = () => t!.captureCharFrame();
-/** Couleur de fond du premier span contenant `text`. */
+/** Background color of the first span containing `text`. */
 function bgOf(text: string) {
   for (const l of t!.captureSpans().lines) for (const s of l.spans) if (s.text.includes(text)) return s.bg.toInts().slice(0, 3);
 }
@@ -51,44 +51,44 @@ const sizes = [{ width: 100, height: 30 }, { width: 80, height: 24 }];
 for (const size of sizes) {
   const tag = `${size.width}x${size.height}`;
 
-  test(`bandeau par état ${tag}`, async () => {
-    const ok = { ...emptyBanner, label: "● CONNECTÉ a", tone: "ok" as const, killswitch: true, lhost: "10.10.14.2", scope: { cidrs: ["10.0.0.0/8"], warning: null }, uptime: "00:01:02", rate: { rx: 2048, tx: 10 } };
+  test(`banner per state ${tag}`, async () => {
+    const ok = { ...emptyBanner, label: "● CONNECTED a", tone: "ok" as const, killswitch: true, lhost: "10.10.14.2", scope: { cidrs: ["10.0.0.0/8"], warning: null }, uptime: "00:01:02", rate: { rx: 2048, tx: 10 } };
     const s = fakeStore({ profiles: [prof("a")] }, ok);
     await mount(s, size);
-    expect(frame()).toContain("● CONNECTÉ a");
+    expect(frame()).toContain("● CONNECTED a");
     expect(frame()).toContain("KILLSWITCH ON");
     expect(frame()).toContain("LHOST 10.10.14.2");
-    expect(bgOf("CONNECTÉ")).toEqual(ints(theme.success));
+    expect(bgOf("CONNECTED")).toEqual(ints(theme.success));
     expect(frame()).toContain("00:01:02");
 
-    s.set({}, { ...ok, label: "◐ RECONNEXION 2/5", tone: "warn" });
+    s.set({}, { ...ok, label: "◐ RECONNECTING 2/5", tone: "warn" });
     await frames();
-    expect(bgOf("RECONNEXION")).toEqual(ints(theme.warning));
+    expect(bgOf("RECONNECTING")).toEqual(ints(theme.warning));
 
-    s.set({}, { ...ok, label: "■ VERROUILLÉ", tone: "danger" });
+    s.set({}, { ...ok, label: "■ LOCKED", tone: "danger" });
     await frames();
-    expect(bgOf("VERROUILLÉ")).toEqual(ints(theme.error));
+    expect(bgOf("LOCKED")).toEqual(ints(theme.error));
 
-    s.set({}, { ...ok, label: "● CONNECTÉ a", tone: "danger", killswitch: false });
+    s.set({}, { ...ok, label: "● CONNECTED a", tone: "danger", killswitch: false });
     await frames();
     expect(frame()).toContain("KILLSWITCH OFF");
-    expect(bgOf("CONNECTÉ")).toEqual(ints(theme.error));
+    expect(bgOf("CONNECTED")).toEqual(ints(theme.error));
 
     s.set({}, emptyBanner);
     await frames();
-    expect(bgOf("DÉCONNECTÉ")).toEqual(ints(theme.muted));
+    expect(bgOf("DISCONNECTED")).toEqual(ints(theme.muted));
 
-    s.set({}, { ...ok, scope: { cidrs: [], warning: "pas de scope" } });
+    s.set({}, { ...ok, scope: { cidrs: [], warning: "no scope" } });
     await frames();
-    expect(frame()).toContain("aucun scope");
+    expect(frame()).toContain("no scope");
 
     s.set({ daemonReachable: false, lastError: "connect ENOENT" });
     await frames();
-    expect(frame()).toContain("daemon injoignable");
-    expect(bgOf("daemon injoignable")).toEqual(ints(theme.error));
+    expect(frame()).toContain("daemon unreachable");
+    expect(bgOf("daemon unreachable")).toEqual(ints(theme.error));
   });
 
-  test(`liste, navigation, toggle, détail ${tag}`, async () => {
+  test(`list, navigation, toggle, detail ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof("a"), prof("b")], status: status() });
     await mount(s, size);
     expect(frame()).toContain("A (a)");
@@ -107,37 +107,37 @@ for (const size of sizes) {
     expect(currentView()).toBe("profiles");
   });
 
-  test(`x : confirmation et annulation ${tag}`, async () => {
+  test(`x: confirmation and cancel ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof("a")] });
     await mount(s, size);
     await press("x");
-    expect(frame()).toContain("Supprimer le profil a et ses secrets ?");
+    expect(frame()).toContain("Delete profile a and its secrets?");
     await press("n");
     expect(s.deleteProfile).not.toHaveBeenCalled();
-    expect(frame()).not.toContain("Supprimer le profil");
+    expect(frame()).not.toContain("Delete profile");
     await press("x");
-    await press("o");
+    await press("y");
     expect(s.deleteProfile).toHaveBeenCalledWith("a");
   });
 
-  test(`! : exige « oui » ${tag}`, async () => {
+  test(`! : requires "yes" ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof("a")] });
     await mount(s, size);
     await press("!");
     expect(frame()).toContain("Kill switch");
     await press("enter");
     expect(s.panicOff).not.toHaveBeenCalled();
-    await type("oui");
+    await type("yes");
     await press("enter");
     expect(s.panicOff).toHaveBeenCalledTimes(1);
   });
 
-  test(`s : acceptScope après confirmation seulement ${tag}`, async () => {
+  test(`s: acceptScope only after confirmation ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof("a")] });
     await mount(s, size);
     await press("s");
-    await press("o");
-    expect(s.acceptScope).not.toHaveBeenCalled(); // pas de pendingScope
+    await press("y");
+    expect(s.acceptScope).not.toHaveBeenCalled(); // no pendingScope
     s.set({ pendingScope: { profile: "a", cidrs: ["10.1.0.0/16", "10.0.0.0/8"], added: ["10.1.0.0/16"], existing: ["10.0.0.0/8"] } });
     await frames();
     await press("d");
@@ -148,11 +148,11 @@ for (const size of sizes) {
     await press("n");
     expect(s.acceptScope).not.toHaveBeenCalled();
     await press("s");
-    await press("o");
+    await press("y");
     expect(s.acceptScope).toHaveBeenCalledTimes(1);
   });
 
-  test(`L ouvre les logs, escape revient ${tag}`, async () => {
+  test(`L opens the logs, escape goes back ${tag}`, async () => {
     const e = (kind: string) => ({ time: "2026-01-01T10:00:00Z", profile: "a", state: "armed", kind, detail: `d-${kind}` });
     const s = fakeStore({ profiles: [prof("a")], events: [e("up"), e("drop")] });
     await mount(s, size);
@@ -165,19 +165,19 @@ for (const size of sizes) {
     expect(currentView()).toBe("profiles");
   });
 
-  test(`y copie le LHOST ${tag}`, async () => {
+  test(`c copies the LHOST ${tag}`, async () => {
     const s = fakeStore({}, { ...emptyBanner, lhost: "10.10.14.2" });
     await mount(s, size);
     const spy = spyOn(t!.renderer, "copyToClipboardOSC52").mockReturnValue(true);
-    await press("y");
+    await press("c");
     expect(spy).toHaveBeenCalledWith("10.10.14.2");
   });
 
-  test(`? : aide défilable jusqu'au recours ${tag}`, async () => {
+  test(`?: scrollable help down to the fallback section ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof("a")] });
     await mount(s, size);
     await press("?");
-    expect(frame()).toContain("Liste des profils");
+    expect(frame()).toContain("Imported VPN profiles");
     for (let i = 0; i < 40 && !frame().includes("nft delete table"); i++) await press("j");
     expect(frame()).toContain("nft delete table");
     await press("escape");
@@ -185,11 +185,11 @@ for (const size of sizes) {
   });
 }
 
-test("spinner : libellé pendant busy", async () => {
+test("spinner: label while busy", async () => {
   const s = fakeStore({ profiles: [prof("a")], busy: "up" });
   await mount(s);
-  expect(frame()).toContain("Connexion…");
+  expect(frame()).toContain("Connecting…");
   s.set({ busy: null, status: status({ state: "reconnecting", reconnect: { attempt: 2, max: 5 } }) });
   await frames();
-  expect(frame()).toContain("Reconnexion 2/5…");
+  expect(frame()).toContain("Reconnecting 2/5…");
 });

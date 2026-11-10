@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Test d'intégration WireGuard en netns rootless (aucun sudo). Lancer depuis la racine : nix develop -c scripts/it-wg.sh
-# Compile le daemon hors userns, puis se ré-exécute dans `unshare -Urn` (sentinelle IT_INNER).
+# WireGuard integration test in rootless netns (no sudo). Run from the repo root: nix develop -c scripts/it-wg.sh
+# Builds the daemon outside the userns, then re-runs itself in `unshare -Urn` (IT_INNER sentinel).
 set -euo pipefail
 # shellcheck source=scripts/it-lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/it-lib.sh"
 it_bootstrap "$0" "$@"
 
-# --- Serveurs WireGuard dans le netns serveur ---
+# --- WireGuard servers in the server netns ---
 it_server_netns
 K="$TMP/keys"
 mkdir -p "$K"
@@ -20,7 +20,7 @@ PSK=$(<"$K/psk")
 PRIV_A=$(<"$K/cli0.key")
 PRIV_B=$(<"$K/cli1.key")
 
-# server_wg <iface> <adresse> <port> <clé serveur> <pub client> <ip client> [psk]
+# server_wg <iface> <address> <port> <server key> <client pub> <client ip> [psk]
 server_wg() {
   local ifc=$1 addr=$2 port=$3 key=$4 cpub=$5 cip=$6 psk=${7:-}
   srv ip link add "$ifc" type wireguard
@@ -32,7 +32,7 @@ server_wg() {
 }
 server_wg wg0 10.10.1.1/24 51820 "$K/srv0.key" "$(<"$K/cli0.pub")" 10.10.1.2
 server_wg wg1 10.10.2.1/24 51821 "$K/srv1.key" "$(<"$K/cli1.pub")" 10.10.2.2 "$K/psk"
-# Services : l'adresse sur wg0/wg1 répond au ping (kernel) ; pas de listener TCP (shortcut: ping suffit à prouver le routage).
+# Services: the address on wg0/wg1 answers ping (kernel); no TCP listener (shortcut: ping is enough to prove routing).
 
 cat >"$TMP/a.conf" <<EOC
 [Interface]
@@ -62,61 +62,61 @@ it_daemon "$@"
 
 # 1. import
 cli import "$TMP/a.conf" --id a
-expect_rc 0 "étape 1 : import a"
+expect_rc 0 "step 1: import a"
 cli import "$TMP/b.conf" --id b
-expect_rc 0 "étape 1 : import b"
-grep -qF "$PRIV_A" "$KEYRING_DIR/a" || fail "étape 1 : clé de a absente du faux keyring"
-grep -qF "$PSK" "$KEYRING_DIR/b" || fail "étape 1 : PSK de b absent du faux keyring"
+expect_rc 0 "step 1: import b"
+grep -qF "$PRIV_A" "$KEYRING_DIR/a" || fail "step 1: key of a missing from the fake keyring"
+grep -qF "$PSK" "$KEYRING_DIR/b" || fail "step 1: PSK of b missing from the fake keyring"
 no_secret_in "$PRIV_A" "$TMP/state"
 no_secret_in "$PRIV_B" "$TMP/state"
 no_secret_in "$PSK" "$TMP/state"
-ok "étape 1 : import a et b, secrets dans le keyring, absents du state"
+ok "step 1: import a and b, secrets in the keyring, absent from the state"
 
 # 2. up a
 cli up a
-expect_rc 0 "étape 2 : up a"
+expect_rc 0 "step 2: up a"
 cli status --json
-expect_rc 0 "étape 2 : status"
+expect_rc 0 "step 2: status"
 status_has '"state":"armed"'
 status_has '"profile":"a"'
-ip link show vpntui0 >/dev/null 2>&1 || fail "étape 2 : vpntui0 absente"
-ping -c1 -W2 10.10.1.1 >/dev/null || fail "étape 2 : ping 10.10.1.1"
-[[ $(<"$LHOST_FILE") == 10.10.1.* ]] || fail "étape 2 : lhost = $(<"$LHOST_FILE")"
-grep -F '"scope_learned"' "$TMP/cache/events.jsonl" | grep -qF '10.10.1.0/24' || fail "étape 2 : scope_learned 10.10.1.0/24 absent"
-ok "étape 2 : up a, armed, vpntui0, ping, lhost, scope_learned"
+ip link show vpntui0 >/dev/null 2>&1 || fail "step 2: vpntui0 missing"
+ping -c1 -W2 10.10.1.1 >/dev/null || fail "step 2: ping 10.10.1.1"
+[[ $(<"$LHOST_FILE") == 10.10.1.* ]] || fail "step 2: lhost = $(<"$LHOST_FILE")"
+grep -F '"scope_learned"' "$TMP/cache/events.jsonl" | grep -qF '10.10.1.0/24' || fail "step 2: scope_learned 10.10.1.0/24 missing"
+ok "step 2: up a, armed, vpntui0, ping, lhost, scope_learned"
 
-# 3. bascule vers b
+# 3. switch to b
 cli up b
-expect_rc 0 "étape 3 : up b"
+expect_rc 0 "step 3: up b"
 cli status --json
 status_has '"profile":"b"'
-ping -c1 -W2 10.10.2.1 >/dev/null || fail "étape 3 : ping 10.10.2.1"
-if ping -c1 -W2 10.10.1.1 >/dev/null 2>&1; then fail "étape 3 : 10.10.1.1 encore joignable"; fi
+ping -c1 -W2 10.10.2.1 >/dev/null || fail "step 3: ping 10.10.2.1"
+if ping -c1 -W2 10.10.1.1 >/dev/null 2>&1; then fail "step 3: 10.10.1.1 still reachable"; fi
 la=$(grep -n '"kind":"up".*"profile":"a"\|"profile":"a".*"kind":"up"' "$TMP/cache/events.jsonl" | head -1 | cut -d: -f1)
 lb=$(grep -n '"kind":"up".*"profile":"b"\|"profile":"b".*"kind":"up"' "$TMP/cache/events.jsonl" | head -1 | cut -d: -f1)
-[[ -n $la && -n $lb && $lb -gt $la ]] || fail "étape 3 : up b pas après up a dans events.jsonl (a=$la b=$lb)"
-ok "étape 3 : bascule a -> b, route de a partie"
+[[ -n $la && -n $lb && $lb -gt $la ]] || fail "step 3: up b not after up a in events.jsonl (a=$la b=$lb)"
+ok "step 3: switch a -> b, route of a removed"
 
 # 4. down
 cli down
-expect_rc 0 "étape 4 : down"
+expect_rc 0 "step 4: down"
 cli status --json
 status_has '"state":"disarmed"'
-if ip link show vpntui0 >/dev/null 2>&1; then fail "étape 4 : vpntui0 encore présente"; fi
-[[ ! -s $LHOST_FILE ]] || fail "étape 4 : lhost non vide"
-ok "étape 4 : down, disarmed, interface absente, lhost vide"
+if ip link show vpntui0 >/dev/null 2>&1; then fail "step 4: vpntui0 still present"; fi
+[[ ! -s $LHOST_FILE ]] || fail "step 4: lhost not empty"
+ok "step 4: down, disarmed, interface missing, lhost empty"
 
-# 5. secrets absents du keyring
+# 5. secrets absent from the keyring
 rm -f "$KEYRING_DIR/a"
 cli up a
-expect_rc 1 "étape 5 : up a sans secrets"
-if ip link show vpntui0 >/dev/null 2>&1; then fail "étape 5 : vpntui0 présente"; fi
-ok "étape 5 : up sans secrets refusé (exit 1), pas d'interface"
+expect_rc 1 "step 5: up a without secrets"
+if ip link show vpntui0 >/dev/null 2>&1; then fail "step 5: vpntui0 present"; fi
+ok "step 5: up without secrets rejected (exit 1), no interface"
 
-# 6. aucun secret sur disque côté daemon
+# 6. no secret on disk on the daemon side
 for s in "$PRIV_A" "$PRIV_B" "$PSK"; do
   no_secret_in "$s" "$TMP/state" "$TMP/run" "$TMP/cache" "$TMP/daemon.log"
 done
-ok "étape 6 : aucun secret dans state, run, cache, log du daemon"
+ok "step 6: no secret in state, run, cache, or daemon log"
 
 echo "PASS"

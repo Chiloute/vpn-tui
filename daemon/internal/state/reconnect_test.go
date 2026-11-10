@@ -121,12 +121,12 @@ func validJournal(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 		if err := sch.Validate(v); err != nil {
-			t.Fatalf("événement invalide %s : %v", line, err)
+			t.Fatalf("invalid event %s: %v", line, err)
 		}
 		n++
 	}
 	if n == 0 {
-		t.Fatal("journal vide")
+		t.Fatal("empty journal")
 	}
 }
 
@@ -187,7 +187,7 @@ func TestReconnectSuccess(t *testing.T) {
 	r.d.failures = 2
 	r.d.mu.Unlock()
 	close(r.d.last().dead)
-	wait(t, func() bool { return r.m.Status().State == Armed && r.d.ups.Load() == 4 })
+	wait(t, func() bool { return r.m.Status().State == Armed && r.d.ups.Load() == 4 && len(r.ch) >= 6 }) // the up event follows the state change
 	r.dmu.Lock()
 	defer r.dmu.Unlock()
 	if len(r.delays) != 3 || r.delays[0] != time.Second || r.delays[1] != 2*time.Second || r.delays[2] != 4*time.Second {

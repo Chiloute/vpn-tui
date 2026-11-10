@@ -22,7 +22,7 @@ const Iface = "vpntui0"
 var teardownDelay = time.Second
 
 // ErrSecrets means required secrets are missing (messages never carry values).
-var ErrSecrets = errors.New("secrets manquants")
+var ErrSecrets = errors.New("missing secrets")
 
 // withDNS applies the profile DNS on Iface (nothing when it has no servers) and returns stop preceded by a
 // best-effort Revert. An Apply failure only logs: the tunnel stays up (nft already blocks 53/853 outside it).
@@ -31,24 +31,24 @@ func withDNS(ctx context.Context, r *dns.Resolved, p *profile.Profile, stop func
 		return stop
 	}
 	if r == nil || r.Bin == "" {
-		slog.Warn("dns: resolvectl indisponible, DNS du profil non appliqué", "profile", p.ID)
+		slog.Warn("dns: resolvectl unavailable, profile DNS not applied", "profile", p.ID)
 		return stop
 	}
 	var addrs []netip.Addr
 	for _, s := range p.DNS.Servers {
 		a, err := netip.ParseAddr(s)
 		if err != nil {
-			slog.Warn("dns: serveur invalide", "profile", p.ID)
+			slog.Warn("dns: invalid server", "profile", p.ID)
 			return stop
 		}
 		addrs = append(addrs, a)
 	}
 	if err := r.Apply(ctx, Iface, addrs, p.DNS.Force); err != nil {
-		slog.Warn("dns: application impossible", "profile", p.ID, "err", err)
+		slog.Warn("dns: cannot apply", "profile", p.ID, "err", err)
 	}
 	return func() error {
 		if err := r.Revert(context.WithoutCancel(ctx), Iface); err != nil {
-			slog.Warn("dns: revert impossible", "err", err)
+			slog.Warn("dns: cannot revert", "err", err)
 		}
 		return stop()
 	}

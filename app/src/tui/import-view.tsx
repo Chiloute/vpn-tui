@@ -15,7 +15,7 @@ import { bindCommands, setCurrentView } from "./shell";
 const MAX_BYTES = 1_000_000;
 export const expandHome = (p: string) => (p === "~" || p.startsWith("~/") ? homedir() + p.slice(1) : p);
 
-/** Complète `input` avec les noms du dossier correspondant (préfixe commun) ; renvoie `input` s'il n'y a rien à compléter. */
+/** Completes `input` with the matching directory's names (common prefix); returns `input` if there is nothing to complete. */
 export function completePath(input: string): string {
   const full = expandHome(input);
   const dir = full.endsWith("/") ? full : dirname(full);
@@ -32,7 +32,7 @@ export function completePath(input: string): string {
   const out = join(dir, common);
   const prefix = input.startsWith("~") ? "~" + out.slice(homedir().length) : input.startsWith("./") ? "./" + out : out;
   let isDir = false;
-  try { isDir = names.length === 1 && statSync(out).isDirectory(); } catch { /* ignoré */ }
+  try { isDir = names.length === 1 && statSync(out).isDirectory(); } catch { /* ignored */ }
   return prefix + (isDir ? "/" : "");
 }
 
@@ -45,17 +45,17 @@ export function ImportView() {
 
   const set = (id: string, v: string) => {
     setValues(id, v);
-    if (id === "path") setPreview(null); // l'aperçu ne vaut que pour le fichier lu
+    if (id === "path") setPreview(null); // the preview only applies to the file read
   };
   const has = () => preview() !== null;
   const fields: Field[] = [
-    { kind: "text", id: "path", label: "Fichier", placeholder: "~/vpn/profil.ovpn (Tab pour compléter)" },
-    { kind: "note", text: () => `Type : ${preview()!.type}`, color: theme.text, when: has },
-    { kind: "note", text: () => `Serveur : ${preview()!.endpoint ?? "?"}`, color: theme.text, when: has },
-    { kind: "note", text: () => `Secrets : ${preview()!.hasSecrets ? "extraits vers le keyring" : "aucun"}`, color: theme.text, when: has },
-    { kind: "text", id: "name", label: "Nom", when: has },
-    { kind: "text", id: "id", label: "Identifiant", when: has },
-    { kind: "button", id: "go", label: "Importer", when: has },
+    { kind: "text", id: "path", label: "File", placeholder: "~/vpn/profile.ovpn (Tab to complete)" },
+    { kind: "note", text: () => `Type: ${preview()!.type}`, color: theme.text, when: has },
+    { kind: "note", text: () => `Server: ${preview()!.endpoint ?? "?"}`, color: theme.text, when: has },
+    { kind: "note", text: () => `Secrets: ${preview()!.hasSecrets ? "moved to the keyring" : "none"}`, color: theme.text, when: has },
+    { kind: "text", id: "name", label: "Name", when: has },
+    { kind: "text", id: "id", label: "Id", when: has },
+    { kind: "button", id: "go", label: "Import", when: has },
   ];
   const nav = createFormNav(fields);
   const lines = (m: string) => m.split("\n").filter((l) => l.trim());
@@ -63,12 +63,12 @@ export function ImportView() {
   function readPreview() {
     const path = expandHome(values.path!.trim());
     setPreview(null);
-    if (!path) return setErrors(["Indiquez le chemin d'un fichier .ovpn ou .conf"]);
+    if (!path) return setErrors(["Enter the path of an .ovpn or .conf file"]);
     try {
-      if (statSync(path).size > MAX_BYTES) return setErrors([`Fichier trop volumineux (> ${MAX_BYTES / 1_000_000} Mo)`]);
+      if (statSync(path).size > MAX_BYTES) return setErrors([`File too large (> ${MAX_BYTES / 1_000_000} MB)`]);
       content = readFileSync(path, "utf8");
     } catch (e) {
-      return setErrors([`Lecture impossible : ${(e as Error).message}`]);
+      return setErrors([`Cannot read file: ${(e as Error).message}`]);
     }
     const r = store.previewImport({ filename: path, content });
     if ("error" in r) return setErrors(lines(r.error));
@@ -86,8 +86,8 @@ export function ImportView() {
     if ("error" in local) return setErrors(lines(local.error));
     setErrors([]);
     const pid = await store.importProfile(input);
-    if (!pid) return setErrors(lines(store.getState().lastError ?? "Import refusé par le daemon"));
-    notify(`Profil ${pid} importé`, { kind: "success" });
+    if (!pid) return setErrors(lines(store.getState().lastError ?? "Import rejected by the daemon"));
+    notify(`Profile ${pid} imported`, { kind: "success" });
     setSelectedId(pid);
     setCurrentView("profiles");
   }

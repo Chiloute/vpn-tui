@@ -84,7 +84,7 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 		evs, err := s.Mgr.Bus.Read(since, 1000)
 		if err != nil {
 			slog.Error("logs", "err", err)
-			return nil, &rpcError{-32603, "lecture du journal impossible"}, true
+			return nil, &rpcError{-32603, "cannot read the log"}, true
 		}
 		if evs == nil {
 			evs = []events.Event{}
@@ -108,7 +108,7 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 			PrivateKey: p.Secrets.PrivateKey, PresharedKey: p.Secrets.PresharedKey}
 	}
 	if prof.Secrets.KeyringRef != "" && (prof.Type == profile.TypeOpenVPN && sec.Username == "" || prof.Type == profile.TypeWireGuard && sec.PrivateKey == "") {
-		return nil, &rpcError{CodeInvalidPar, "secrets manquants pour ce profil"}, true
+		return nil, &rpcError{CodeInvalidPar, "missing secrets for this profile"}, true
 	}
 	err = s.Mgr.Up(s.ctx, prof, sec)
 	sec = state.Secrets{} // not kept
@@ -122,12 +122,12 @@ func (s *Server) vpnMethod(method string, raw json.RawMessage) (res any, e *rpcE
 func connErr(err error) *rpcError {
 	switch {
 	case errors.Is(err, state.ErrAlreadyActive):
-		return &rpcError{CodeBusy, "profil déjà actif"}
+		return &rpcError{CodeBusy, "profile already active"}
 	case errors.Is(err, driver.ErrSecrets):
 		return &rpcError{CodeInvalidPar, err.Error()}
 	}
 	slog.Error("vpn", "err", err)
-	return &rpcError{-32603, "échec de la connexion : " + trunc(err.Error())}
+	return &rpcError{-32603, "connection failed: " + trunc(err.Error())}
 }
 
 func trunc(m string) string {
@@ -140,7 +140,7 @@ func trunc(m string) string {
 func (s *Server) learnAccept(id string, cidrs []string) (any, *rpcError, bool) {
 	for _, c := range cidrs {
 		if p, err := netip.ParsePrefix(c); err != nil || p != p.Masked() || p.Addr().Zone() != "" {
-			return nil, &rpcError{CodeInvalidPar, "CIDR invalide ou non canonique"}, true
+			return nil, &rpcError{CodeInvalidPar, "invalid or non-canonical CIDR"}, true
 		}
 	}
 	p, err := s.Store.Get(id)

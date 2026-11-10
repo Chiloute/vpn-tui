@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	ErrAlreadyActive = errors.New("déjà actif")
-	ErrCancelled     = errors.New("annulé par panic-off/down")
+	ErrAlreadyActive = errors.New("already active")
+	ErrCancelled     = errors.New("cancelled by panic-off/down")
 )
 
 type Endpoint struct {
@@ -192,7 +192,9 @@ func (m *Manager) set(state string, s *session) {
 		m.since = time.Now().UTC()
 	}
 	m.state, m.sess = state, s
-	m.attempt, m.max = 0, 0
+	if state != Reconnecting { // counters are set by the reconnect loop before it enters this state
+		m.attempt, m.max = 0, 0
+	}
 	pe := Persisted{State: state, Since: &m.since, Updated: time.Now().UTC()}
 	if s != nil {
 		pe.Profile, pe.Iface, pe.LHOST, pe.PID = s.p.ID, s.iface, s.lhost, s.pid
@@ -257,7 +259,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	}
 	drv, ok := m.Drivers[p.Type]
 	if !ok {
-		return fmt.Errorf("pas de pilote pour le type %q", p.Type)
+		return fmt.Errorf("no driver for type %q", p.Type)
 	}
 	eps, err := drv.Endpoints(ctx, p)
 	if err != nil {
@@ -309,7 +311,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	if m.gen.Load() != gen { // PanicOff/Down/another Up ran meanwhile: touch nothing
 		if err == nil {
 			if derr := tun.Down(); derr != nil {
-				m.emit("error", "tunnel annulé: "+derr.Error())
+				m.emit("error", "tunnel cancelled: "+derr.Error())
 			}
 		}
 		return ErrCancelled
@@ -343,7 +345,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	}
 	m.set(Armed, next)
 	m.writeMarker(next)
-	m.emit("up", "profil "+p.ID+" actif sur "+info.Iface)
+	m.emit("up", "profile "+p.ID+" active on "+info.Iface)
 	if len(next.scope) > 0 {
 		m.emit("scope_learned", strings.Join(next.scope, ","))
 	}

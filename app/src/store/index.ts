@@ -52,7 +52,7 @@ function parseImport({ filename, content: raw, name, id }: ImportInput) {
   return { type, content, secrets, pname, pid, endpoint };
 }
 
-/** Aperçu local, rien n'est envoyé ; ne renvoie jamais de secret. */
+/** Local preview, nothing is sent; never returns a secret. */
 export function previewImport(input: ImportInput): { preview: ImportPreview } | { error: string } {
   try {
     const r = parseImport(input);
@@ -77,8 +77,8 @@ export function createStore(overrides: Partial<Deps> = {}) {
   const redact = (m: string, secrets: string[]) => secrets.reduce((a, s) => a.split(s).join("***"), m);
   const describe = (e: unknown) =>
     e instanceof RpcError
-      ? e.code === -32001 ? `Accès refusé par le daemon : ${e.message}` : `Erreur du daemon (${e.code}) : ${e.message}`
-      : e instanceof Error ? e.message : "erreur inconnue";
+      ? e.code === -32001 ? `Access denied by the daemon: ${e.message}` : `Daemon error (${e.code}): ${e.message}`
+      : e instanceof Error ? e.message : "unknown error";
 
   async function refresh(): Promise<void> {
     try {
@@ -107,16 +107,16 @@ export function createStore(overrides: Partial<Deps> = {}) {
   async function up(id: string) {
     const { profiles } = (await d.call("list", undefined, sock)) as unknown as { profiles: Profile[] };
     const p = profiles.find((x) => x.id === id);
-    if (!p) throw new Error(`Profil inconnu : ${id}`);
+    if (!p) throw new Error(`Unknown profile: ${id}`);
     let params: { id: string; secrets?: unknown } = { id };
     if (p.has_secrets) {
       let secrets;
       try {
         secrets = await d.loadSecrets(id);
       } catch (e) {
-        throw new Error(`Lecture du keyring impossible pour ${id} : ${(e as Error).message}`);
+        throw new Error(`Cannot read the keyring for ${id}: ${(e as Error).message}`);
       }
-      if (!secrets) throw new Error(`secrets introuvables dans le keyring pour ${id} : réimportez le profil`);
+      if (!secrets) throw new Error(`secrets not found in the keyring for ${id}: re-import the profile`);
       params = { id, secrets };
     }
     await d.call("up", params, { ...sock, timeoutMs: 90_000 });
@@ -130,13 +130,13 @@ export function createStore(overrides: Partial<Deps> = {}) {
       try {
         await d.storeSecrets(r.pid, r.secrets);
       } catch (e) {
-        let more = " (import annulé)";
+        let more = " (import cancelled)";
         try {
           await d.call("profile_delete", { id: r.pid }, sock);
         } catch {
-          more = ` ; ATTENTION : le profil "${r.pid}" n'a pas pu être retiré du daemon (supprimez-le manuellement)`;
+          more = ` ; WARNING: profile "${r.pid}" could not be removed from the daemon (delete it manually)`;
         }
-        throw new Error(`Échec du stockage des secrets dans le keyring : ${(e as Error).message}${more}`);
+        throw new Error(`Failed to store secrets in the keyring: ${(e as Error).message}${more}`);
       }
     }
     await refresh();
@@ -164,7 +164,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
       onOpen: () => {
         opened = true;
         set({ daemonReachable: true });
-        void refresh(); // rattrape ce qui a pu être manqué pendant la coupure
+        void refresh(); // catches up on anything missed during the cut
       },
       onError: () => {
         if (!opened) set({ daemonReachable: false });
@@ -183,7 +183,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
       return () => void listeners.delete(l);
     },
     refresh,
-    /** Refresh, historique 7 jours, puis abonnement (reconnecté automatiquement). */
+    /** Refresh, 7-day history, then subscription (reconnected automatically). */
     async start() {
       if (!stopped) return;
       stopped = false;
@@ -204,7 +204,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
     },
     toggle(id: string) {
       const active = state.status?.profile === id && state.status.state !== "disarmed";
-      // "reconnect" : bascule depuis un autre profil actif
+      // "reconnect": switch from another active profile
       const kind = active ? "down" : state.status?.state === "armed" ? "reconnect" : "up";
       return act(kind, async () => {
         if (active) await d.call("down", undefined, sock);
@@ -233,7 +233,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
         try {
           await d.deleteSecrets(id);
         } catch (e) {
-          throw new Error(`Profil supprimé, mais le keyring n'a pas pu être nettoyé : ${(e as Error).message}`);
+          throw new Error(`Profile deleted, but the keyring could not be cleaned: ${(e as Error).message}`);
         } finally {
           await refresh();
         }

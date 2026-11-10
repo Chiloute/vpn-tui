@@ -13,7 +13,7 @@ import (
 
 const (
 	orphanIface  = "vpntui0"
-	noSecretsMsg = "secrets indisponibles après redémarrage du daemon"
+	noSecretsMsg = "secrets unavailable after daemon restart"
 )
 
 // marker is the persistent "armed" file; it never contains secrets.
@@ -105,7 +105,7 @@ func (m *Manager) watch(s *session) {
 		} else {
 			m.set(Reconnecting, d)
 		}
-		m.emit("drop", "tunnel tombé")
+		m.emit("drop", "tunnel dropped")
 		if s.sec == nil { // resumed after a daemon restart: cannot reconnect
 			if s.ks() {
 				m.emit("lock", noSecretsMsg)
@@ -130,11 +130,11 @@ func (m *Manager) reconnect(s *session) {
 	}
 	for a := 1; a <= max; a++ {
 		if !m.step(s, func() {
-			m.set(Reconnecting, s)
 			m.smu.Lock()
-			m.attempt, m.max = a, max
+			m.attempt, m.max = a, max // before set(): Status must never show reconnecting 0/0
 			m.smu.Unlock()
-			m.emit("reconnect", fmt.Sprintf("tentative %d/%d", a, max))
+			m.set(Reconnecting, s)
+			m.emit("reconnect", fmt.Sprintf("attempt %d/%d", a, max))
 		}) {
 			return
 		}
@@ -170,7 +170,7 @@ func (m *Manager) reconnect(s *session) {
 			}
 			m.set(Armed, next)
 			m.writeMarker(next)
-			m.emit("up", "profil "+s.p.ID+" reconnecté sur "+info.Iface)
+			m.emit("up", "profile "+s.p.ID+" reconnected on "+info.Iface)
 			go m.watch(next)
 			done = true
 		})
@@ -193,10 +193,10 @@ func (m *Manager) reconnect(s *session) {
 				m.emit("error", err.Error())
 			}
 			m.set(Locked, l)
-			m.emit("lock", "reconnexion épuisée")
+			m.emit("lock", "reconnection attempts exhausted")
 		} else {
 			m.set(Disarmed, nil)
-			m.emit("error", "reconnexion épuisée")
+			m.emit("error", "reconnection attempts exhausted")
 		}
 	})
 }
@@ -301,7 +301,7 @@ func (m *Manager) RestoreLock() error {
 	}
 	s, spec := markerSession(mk)
 	err = m.lockdown(spec, s)
-	m.emit("lock", "verrou restauré au démarrage")
+	m.emit("lock", "lock restored at startup")
 	return err
 }
 
@@ -358,7 +358,7 @@ func (m *Manager) Reconcile(ctx context.Context, k Kernel, get func(id string) (
 			return lock(nil)
 		case k.IfaceExists(orphanIface):
 			if m.DeleteIface == nil {
-				return lock(errors.New("pas de DeleteIface"))
+				return lock(errors.New("no DeleteIface"))
 			}
 			if err := m.DeleteIface(orphanIface); err != nil {
 				return lock(err)

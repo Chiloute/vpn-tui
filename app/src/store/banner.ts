@@ -31,12 +31,12 @@ export type Banner = {
   lhost: string | null;
   scope: { cidrs: string[]; warning: string | null };
   uptime: string | null; // HH:MM:SS
-  rate: { rx: number; tx: number } | null; // octets/s
+  rate: { rx: number; tx: number } | null; // bytes/s
 };
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
-/** Pure. `ctx.prev` = échantillon rx/tx du status précédent ; `ctx.now` en ms. `busy` n'altère pas le bandeau. */
+/** Pure. `ctx.prev` = rx/tx sample of the previous status; `ctx.now` in ms. `busy` does not alter the banner. */
 export function bannerModel(
   s: Status | null,
   profiles: Profile[],
@@ -45,24 +45,24 @@ export function bannerModel(
 ): Banner {
   const now = ctx.now ?? Date.now();
   if (!s) {
-    return { label: "○ DÉCONNECTÉ", tone: "neutral", killswitch: false, lhost: null, scope: { cidrs: [], warning: null }, uptime: null, rate: null };
+    return { label: "○ DISCONNECTED", tone: "neutral", killswitch: false, lhost: null, scope: { cidrs: [], warning: null }, uptime: null, rate: null };
   }
-  let label = "○ DÉCONNECTÉ";
+  let label = "○ DISCONNECTED";
   let tone: Banner["tone"] = "neutral";
   if (s.state === "armed") {
-    label = `● CONNECTÉ ${s.profile ?? "?"}`;
+    label = `● CONNECTED ${s.profile ?? "?"}`;
     tone = s.killswitch ? "ok" : "danger";
   } else if (s.state === "reconnecting") {
-    label = `◐ RECONNEXION ${s.reconnect.attempt}/${s.reconnect.max}`;
+    label = `◐ RECONNECTING ${s.reconnect.attempt}/${s.reconnect.max}`;
     tone = "warn";
   } else if (s.state === "locked") {
-    label = "■ VERROUILLÉ";
+    label = "■ LOCKED";
     tone = "danger";
   }
   const active = s.state === "armed" || s.state === "reconnecting";
   const prof = profiles.find((p) => p.id === s.profile);
   const cidrs = s.scope.length ? s.scope : (prof?.scope.cidrs ?? []);
-  const warning = active && s.profile && cidrs.length === 0 ? "pas de scope" : null;
+  const warning = active && s.profile && cidrs.length === 0 ? "no scope" : null;
 
   let uptime: string | null = null;
   const t = s.since ? Date.parse(s.since) : NaN;

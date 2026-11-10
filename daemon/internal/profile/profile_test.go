@@ -205,6 +205,6 @@ func TestReadConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := s.ReadConfig("wg1"); err == nil {
-		t.Fatal("lien symbolique accepté")
+		t.Fatal("symlink accepted")
 	}
 }

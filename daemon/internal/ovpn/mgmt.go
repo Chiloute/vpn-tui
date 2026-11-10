@@ -14,17 +14,17 @@ import (
 
 var cmdTimeout = 3 * time.Second
 
-// stateLine est une notification >STATE:<ts>,<state>,<desc>,<local_ip>,<remote_ip>,...
+// stateLine is a notification >STATE:<ts>,<state>,<desc>,<local_ip>,<remote_ip>,...
 type stateLine struct {
 	TS, Name, Desc string
 	LocalIP        netip.Addr
 }
 
-// notif est une notification asynchrone du management (Kind : STATE, HOLD, PASSWORD, FATAL).
+// notif is an asynchronous management notification (Kind: STATE, HOLD, PASSWORD, FATAL).
 type notif struct {
 	Kind  string
 	State stateLine // Kind == "STATE"
-	Text  string    // autres Kind : texte brut après « : »
+	Text  string    // other Kinds: raw text after ":"
 }
 
 func parseNotif(line string) (notif, bool) {
@@ -45,7 +45,7 @@ func parseNotif(line string) (notif, bool) {
 		if len(f) > 3 {
 			st.LocalIP, _ = netip.ParseAddr(f[3])
 		}
-		if !st.LocalIP.IsValid() && len(f) > 8 { // tunnel IPv6 seul
+		if !st.LocalIP.IsValid() && len(f) > 8 { // IPv6-only tunnel
 			st.LocalIP, _ = netip.ParseAddr(f[8])
 		}
 		st.LocalIP = st.LocalIP.Unmap()
@@ -56,12 +56,12 @@ func parseNotif(line string) (notif, bool) {
 	return notif{}, false
 }
 
-// mgmt est un client de l'interface de management d'OpenVPN (socket unix).
+// mgmt is a client of OpenVPN's management interface (unix socket).
 type mgmt struct {
 	conn    net.Conn
-	mu      sync.Mutex // une commande à la fois
+	mu      sync.Mutex // one command at a time
 	replies chan string
-	notifs  chan notif // fermé à la fin de la connexion
+	notifs  chan notif // closed when the connection ends
 	done    chan struct{}
 }
 
@@ -93,7 +93,7 @@ func (m *mgmt) read() {
 	}
 }
 
-// command envoie cmd et attend la réponse SUCCESS:/ERROR:.
+// command sends cmd and waits for the SUCCESS:/ERROR: reply.
 func (m *mgmt) command(cmd string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,13 +104,13 @@ func (m *mgmt) command(cmd string) error {
 	select {
 	case r := <-m.replies:
 		if strings.HasPrefix(r, "ERROR:") {
-			return fmt.Errorf("management « %s » : %s", cmd, r)
+			return fmt.Errorf("management %q: %s", cmd, r)
 		}
 		return nil
 	case <-m.done:
-		return errors.New("management fermé")
+		return errors.New("management closed")
 	case <-time.After(cmdTimeout):
-		return fmt.Errorf("management « %s » : pas de réponse", cmd)
+		return fmt.Errorf("management %q: no response", cmd)
 	}
 }
 

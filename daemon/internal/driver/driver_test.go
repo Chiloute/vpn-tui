@@ -1,5 +1,5 @@
-// Intégration (netns rootless) : unshare -Urn go test ./daemon/internal/driver/
-// Sans CAP_NET_ADMIN le test est skippé.
+// Integration (rootless netns): unshare -Urn go test ./daemon/internal/driver/
+// Without CAP_NET_ADMIN the test is skipped.
 package driver
 
 import (
@@ -22,7 +22,7 @@ func TestWireGuardUpDown(t *testing.T) {
 	probe := netlink.NewLinkAttrs()
 	probe.Name = "wgprobe0"
 	if err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: probe}); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN/wireguard : %v", err)
+		t.Skipf("no CAP_NET_ADMIN/wireguard: %v", err)
 	}
 	pl, _ := netlink.LinkByName("wgprobe0")
 	netlink.LinkDel(pl)
@@ -43,17 +43,17 @@ func TestWireGuardUpDown(t *testing.T) {
 	defer cancel()
 
 	if err := m.Up(ctx, p, state.Secrets{}); err == nil {
-		t.Fatal("up sans clé privée accepté")
+		t.Fatal("up without private key accepted")
 	}
 	if netinfo.Exists(Iface) {
-		t.Fatal("interface créée malgré l'échec")
+		t.Fatal("interface created despite the failure")
 	}
-	// peer injoignable (192.0.2.1) : pas de handshake -> échec, tout est défait (le succès est couvert en netns)
+	// unreachable peer (192.0.2.1): no handshake -> failure, everything undone (success is covered in netns)
 	err = m.Up(ctx, p, state.Secrets{PrivateKey: priv.String()})
 	if !errors.Is(err, wg.ErrNoHandshake) {
-		t.Fatalf("up sans peer : %v", err)
+		t.Fatalf("up without peer: %v", err)
 	}
-	if netinfo.Exists(Iface) || m.Status().State != state.Locked { // kill switch: échec d'up -> verrouillé
-		t.Fatalf("résidu après échec de handshake : %v %+v", netinfo.Exists(Iface), m.Status())
+	if netinfo.Exists(Iface) || m.Status().State != state.Locked { // kill switch: failed up -> locked
+		t.Fatalf("leftovers after handshake failure: %v %+v", netinfo.Exists(Iface), m.Status())
 	}
 }

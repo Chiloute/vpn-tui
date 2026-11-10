@@ -1,11 +1,11 @@
-# vpn-tui : configuration par défaut.
-# Surcharges : ~/.config/vpn-tui/config.yaml (mêmes clés). Plusieurs touches : "up,k".
+# vpn-tui: default configuration.
+# Overrides: ~/.config/vpn-tui/config.yaml (same keys). Several keys: "up,k".
 keybinds:
   global.help: "?"
   global.quit: "q"
   global.panic: "!"
   global.logs: "shift+l"
-  global.copyLhost: "y"
+  global.copyLhost: "c"
   profiles.nav: "up,down,j,k"
   profiles.toggle: "return"
   profiles.detail: "d"
@@ -32,5 +32,5 @@ keybinds:
   help.scroll: "up,down,j,k"
   help.page: "pageup,pagedown"
   help.close: "escape"
-  confirm.yes: "o"
+  confirm.yes: "y"
   confirm.no: "n,escape"

@@ -15,24 +15,24 @@ const registry = new Map<ViewId, Component>();
 const [currentView, setCurrentView] = createSignal<ViewId>("profiles");
 export { currentView, setCurrentView };
 
-/** Enregistre le composant d'une vue ; `id` est une clé de la table d'aide. */
+/** Registers a view's component; `id` is a key of the help table. */
 export function registerView(id: ViewId, component: Component): void {
   registry.set(id, component);
 }
 
-/** Vrai si la touche `key` doit aller au champ focalisé (saisie) plutôt qu'à la commande. */
+/** True if `key` should go to the focused field (typing) rather than to the command. */
 export function keyGoesToField(r: Renderable | null, key: string): boolean {
   if (!r) return false;
   const keys = key.split(",").map((k) => k.trim());
   const typing = r instanceof EditBufferRenderable || r.id.startsWith("mask-");
   if (typing && keys.some((k) => /^(shift\+)?.$/.test(k) || k === "space")) return true;
-  return r instanceof TextareaRenderable && !(r instanceof InputRenderable) && keys.includes("return"); // retour à la ligne
+  return r instanceof TextareaRenderable && !(r instanceof InputRenderable) && keys.includes("return"); // newline
 }
 
 /**
- * Enregistre via useBindings les commandes de la table qui ont un handler.
- * `target` : calque limité à ce renderable (ex. `usePane().target`) ; handlers reçoivent le nom de la touche pressée.
- * Les touches de saisie (lettres, ?, !…) sont suspendues tant qu'un champ de texte a le focus.
+ * Registers via useBindings the table commands that have a handler.
+ * `target`: layer limited to this renderable (e.g. `usePane().target`); handlers receive the pressed key name.
+ * Typing keys (letters, ?, !…) are suspended while a text field has focus.
  */
 export function bindCommands(
   cmds: ResolvedCommand[],
@@ -60,7 +60,7 @@ function HelpModal(props: { open: boolean; onDismiss: () => void; bindings: Reso
   let box: ScrollBoxRenderable | undefined;
   const bold = TextAttributes.BOLD;
   const v = () => views[currentView()];
-  // Hauteur utile du Modal : hauteur - 4 (marge) - 4 (bordure + padding)
+  // Usable Modal height: height - 4 (margin) - 4 (border + padding)
   const h = () => Math.max(1, dims().height - 8);
   const { bindings } = useTui();
   const own = bindings.help;
@@ -71,20 +71,20 @@ function HelpModal(props: { open: boolean; onDismiss: () => void; bindings: Reso
       onDismiss={props.onDismiss}
       width={80}
       commands={[
-        { name: "help.scroll", desc: "défiler", run: (ctx) => void box?.scrollBy(dir(ctx.event.name)) },
+        { name: "help.scroll", desc: "scroll", run: (ctx) => void box?.scrollBy(dir(ctx.event.name)) },
         { name: "help.page", desc: "page", run: (ctx) => void box?.scrollBy(dir(ctx.event.name), "viewport") },
       ]}
       bindings={[{ key: key("help.scroll"), cmd: "help.scroll" }, { key: key("help.page"), cmd: "help.page" }]}
     >
       <scrollbox ref={(e: ScrollBoxRenderable) => (box = e)} maxHeight={h()} flexShrink={1} scrollY scrollX={false} focusable={false}>
         <text flexShrink={0} attributes={bold}>{v().title}</text>
-        <text flexShrink={0}>{[v().role, ...v().actions, ...v().warnings.map((w) => `Attention : ${w}`)].join("\n")}</text>
+        <text flexShrink={0}>{[v().role, ...v().actions, ...v().warnings.map((w) => `Warning: ${w}`)].join("\n")}</text>
         <text flexShrink={0}> </text>
         <text flexShrink={0}>{props.bindings.map((c) => `${prettyKey(c.key).padEnd(14)}${c.desc}`).join("\n")}</text>
         <text flexShrink={0}> </text>
         <text flexShrink={0} attributes={bold}>{killswitch.title}</text>
         <text flexShrink={0}>
-          {[killswitch.intro, ...killswitch.states.map((s) => `${s.label} : ${s.desc}`), killswitch.panicOff].join("\n")}
+          {[killswitch.intro, ...killswitch.states.map((s) => `${s.label}: ${s.desc}`), killswitch.panicOff].join("\n")}
         </text>
       </scrollbox>
     </Modal>
@@ -96,7 +96,7 @@ function PanicModal(props: { open: boolean; onDismiss: () => void }) {
   let input: Renderable | undefined;
   const [value, setValue] = createSignal("");
   const submit = () => {
-    if (value().trim().toLowerCase() !== "oui") return notify("Tapez « oui » pour confirmer le panic-off", { kind: "warning" });
+    if (value().trim().toLowerCase() !== "yes") return notify("Type \"yes\" to confirm panic-off", { kind: "warning" });
     props.onDismiss();
     void store.panicOff();
   };
@@ -105,10 +105,10 @@ function PanicModal(props: { open: boolean; onDismiss: () => void }) {
     <Modal open={props.open} onDismiss={props.onDismiss} width={70} accentColor="red" onOpen={() => queueMicrotask(() => setTimeout(() => input?.focus()))}>
       <text flexShrink={0} attributes={TextAttributes.BOLD}>Panic-off</text>
       <text flexShrink={0}>
-        {"Supprime la table nftables du kill switch et coupe le tunnel : le trafic repart hors VPN, sans protection.\n" +
-          "Voir la section Kill switch dans l'aide (?).\nTapez oui puis Entrée pour confirmer, Échap pour annuler."}
+        {"Removes the kill switch nftables table and drops the tunnel: traffic flows outside the VPN, unprotected.\n" +
+          "See the Kill switch section in the help (?).\nLast resort (root): vpn-tuid --panic-off, or nft delete table inet vpn_tui\nType yes then Enter to confirm, Esc to cancel."}
       </text>
-      <input ref={(e: Renderable) => (input = e)} value={value()} onInput={setValue} onSubmit={submit} placeholder="oui" />
+      <input ref={(e: Renderable) => (input = e)} value={value()} onInput={setValue} onSubmit={submit} placeholder="yes" />
     </Modal>
   );
 }
@@ -121,7 +121,7 @@ function Body() {
   const [helpOpen, setHelpOpen] = createSignal(false);
   const [panicOpen, setPanicOpen] = createSignal(false);
   const [root, setRoot] = createSignal<BoxRenderable>();
-  // Les commandes globales sont limitées à la racine : les modales (Portal) prennent le focus et les coupent.
+  // Global commands are limited to the root: modals (Portal) take focus and cut them off.
   bindCommands(bindings.profiles.filter((c) => c.scope === "global"), {
     "global.help": () => setHelpOpen((o) => !o),
     "global.quit": () => renderer.destroy(),
@@ -129,9 +129,9 @@ function Body() {
     "global.logs": () => setCurrentView("logs"),
     "global.copyLhost": () => {
       const ip = store.lhost();
-      if (!ip) return notify("Pas de LHOST à copier", { kind: "error" });
-      if (renderer.copyToClipboardOSC52(ip)) notify(`LHOST copié : ${ip}`, { kind: "success" });
-      else notify("Copie impossible : terminal sans OSC52", { kind: "error" });
+      if (!ip) return notify("No LHOST to copy", { kind: "error" });
+      if (renderer.copyToClipboardOSC52(ip)) notify(`LHOST copied: ${ip}`, { kind: "success" });
+      else notify("Cannot copy: terminal lacks OSC52", { kind: "error" });
     },
   }, root);
   onMount(() => root()?.focus());
@@ -144,7 +144,7 @@ function Body() {
       if (seen.has(e)) continue;
       seen.add(e);
       if (!NOTIFY_KINDS.has(e.kind) || Date.parse(e.time) < startedAt - 2000) continue;
-      notify(`${e.profile ?? "-"} : ${e.kind} ${e.detail}`.trim(), { kind: e.kind === "scope_learned" ? "info" : "error" });
+      notify(`${e.profile ?? "-"}: ${e.kind} ${e.detail}`.trim(), { kind: e.kind === "scope_learned" ? "info" : "error" });
     }
   });
 

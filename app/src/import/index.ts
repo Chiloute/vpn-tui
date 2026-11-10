@@ -8,10 +8,10 @@ export function detectType(content: string, filename?: string): ProfileType {
   if (ext === "ovpn") return "openvpn";
   if (/^\s*\[Interface\]\s*$/im.test(content)) return "wireguard";
   if (ext === "conf") {
-    throw new Error("fichier .conf sans section [Interface] : type de profil non reconnu");
+    throw new Error(".conf file without an [Interface] section: unrecognized profile type");
   }
   if (/^\s*(remote|client|dev)\s/m.test(content)) return "openvpn";
-  throw new Error("type de profil non reconnu (attendu : .ovpn OpenVPN ou .conf WireGuard)");
+  throw new Error("unrecognized profile type (expected .ovpn OpenVPN or .conf WireGuard)");
 }
 
 export function slugify(name: string): string {
@@ -23,7 +23,7 @@ export function slugify(name: string): string {
     .replace(/^-+/, "")
     .slice(0, 32)
     .replace(/-+$/, "");
-  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(s)) throw new Error(`nom de profil impossible à convertir en identifiant : "${name}"`);
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(s)) throw new Error(`profile name cannot be converted to an id: "${name}"`);
   return s;
 }
 
@@ -33,23 +33,23 @@ export function extractSecrets(type: ProfileType, content: string): { content: s
 
 function extractOpenvpn(content: string) {
   if (/^[ \t]*auth-user-pass[ \t]+\S/m.test(content)) {
-    throw new Error("`auth-user-pass <fichier>` non supporté : utilisez un bloc <auth-user-pass> ou la directive seule");
+    throw new Error("`auth-user-pass <file>` is not supported: use an <auth-user-pass> block or the bare directive");
   }
   const open = content.search(/^[ \t]*<auth-user-pass>[ \t]*\r?$/m);
   if (open < 0) {
-    if (/<\/?auth-user-pass>/.test(content)) throw new Error("bloc <auth-user-pass> mal formé");
+    if (/<\/?auth-user-pass>/.test(content)) throw new Error("malformed <auth-user-pass> block");
     return { content, secrets: null };
   }
   const close = /^[ \t]*<\/auth-user-pass>[ \t]*\r?(\n|$)/m.exec(content.slice(open));
-  if (!close) throw new Error("bloc <auth-user-pass> non fermé");
+  if (!close) throw new Error("unclosed <auth-user-pass> block");
   const inner = content.slice(open, open + close.index).replace(/^[^\n]*\n?/, "");
   const lines = inner.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim() !== "");
   const [username, password] = lines;
   if (lines.length !== 2 || username === undefined || password === undefined) {
-    throw new Error("bloc <auth-user-pass> mal formé : 2 lignes attendues (identifiant, mot de passe)");
+    throw new Error("malformed <auth-user-pass> block: 2 lines expected (username, password)");
   }
   const rest = content.slice(0, open) + content.slice(open + close.index + close[0].length);
-  if (/<\/?auth-user-pass>/.test(rest)) throw new Error("plusieurs blocs <auth-user-pass>");
+  if (/<\/?auth-user-pass>/.test(rest)) throw new Error("multiple <auth-user-pass> blocks");
   // An inline block alone enables auth; keep that meaning once the block is gone.
   const out = /^[ \t]*auth-user-pass[ \t]*\r?$/m.test(rest) ? rest : rest.replace(/\n?$/, "\nauth-user-pass\n");
   return { content: out, secrets: { username, password } };
@@ -69,17 +69,17 @@ function extractWireguard(content: string) {
     const name = m[2]!.toLowerCase();
     const value = m[4]!;
     if (name === "privatekey" && section === "interface") {
-      if (priv !== undefined) throw new Error("plusieurs PrivateKey dans [Interface]");
-      if (!B64_KEY.test(value)) throw new Error("PrivateKey invalide (base64 de 44 caractères attendu)");
+      if (priv !== undefined) throw new Error("multiple PrivateKey entries in [Interface]");
+      if (!B64_KEY.test(value)) throw new Error("invalid PrivateKey (44-character base64 expected)");
       priv = value;
     } else if (name === "presharedkey" && section === "peer") {
-      if (!B64_KEY.test(value)) throw new Error("PresharedKey invalide (base64 de 44 caractères attendu)");
-      if (psk !== undefined && psk !== value) throw new Error("plusieurs PresharedKey différentes : une seule est supportée");
+      if (!B64_KEY.test(value)) throw new Error("invalid PresharedKey (44-character base64 expected)");
+      if (psk !== undefined && psk !== value) throw new Error("multiple different PresharedKey entries: only one is supported");
       psk = value;
     } else return line;
     return `${m[1]}${m[2]}${m[3]}@keyring${m[5]}`;
   });
-  if (priv === undefined) throw new Error("PrivateKey absente de la section [Interface]");
+  if (priv === undefined) throw new Error("PrivateKey missing from the [Interface] section");
   const secrets: Secrets = psk === undefined ? { private_key: priv } : { private_key: priv, preshared_key: psk };
   return { content: out.join("\n"), secrets };
 }

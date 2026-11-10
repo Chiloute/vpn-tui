@@ -7,15 +7,15 @@ import { deleteSecrets, loadSecrets, storeSecrets } from "../keyring";
 import { writeLhost } from "../lhost";
 import { notifyCmd } from "../notify";
 
-const USAGE = `Usage : vpn-tui status [--json]
-        vpn-tui import <fichier> [--name NOM] [--id ID]
+const USAGE = `Usage: vpn-tui status [--json]
+        vpn-tui import <file> [--name NAME] [--id ID]
         vpn-tui list [--json]
         vpn-tui up <id>
         vpn-tui down
         vpn-tui lhost
         vpn-tui logs [--since 24h|7d|30m|DATE_RFC3339] [--json]
         vpn-tui panic-off [--yes]
-        vpn-tui notify   (s'abonne aux événements, envoie des notifications via notify-send, met à jour LHOST)
+        vpn-tui notify   (subscribes to events, sends notify-send notifications, updates LHOST)
         vpn-tui --help`;
 
 type Status = {
@@ -29,13 +29,13 @@ type Status = {
 export function formatStatus(s: Status): string {
   switch (s.state) {
     case "armed":
-      return `● CONNECTÉ ${s.profile ?? "?"}  LHOST ${s.lhost ?? "-"}  KILLSWITCH ${s.killswitch ? "ON" : "OFF"}`;
+      return `● CONNECTED ${s.profile ?? "?"}  LHOST ${s.lhost ?? "-"}  KILLSWITCH ${s.killswitch ? "ON" : "OFF"}`;
     case "locked":
-      return "■ VERROUILLÉ";
+      return "■ LOCKED";
     case "reconnecting":
-      return `◐ RECONNEXION ${s.reconnect.attempt}/${s.reconnect.max}`;
+      return `◐ RECONNECTING ${s.reconnect.attempt}/${s.reconnect.max}`;
     default:
-      return "○ DÉCONNECTÉ";
+      return "○ DISCONNECTED";
   }
 }
 
@@ -50,7 +50,7 @@ export type IO = {
 
 const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
-/** Durée (30m, 24h, 7d) ou date RFC 3339 -> RFC 3339 ; null si invalide. */
+/** Duration (30m, 24h, 7d) or RFC 3339 date -> RFC 3339; null if invalid. */
 function parseSince(v: string, now = Date.now()): string | null {
   const m = /^(\d+)([mhd])$/.exec(v);
   if (m) return new Date(now - Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS]).toISOString();
@@ -71,12 +71,12 @@ function formatEvent(e: Ev): string {
 async function logsCmd(since: string, json: boolean, io: IO, socket?: string): Promise<number> {
   const iso = parseSince(since);
   if (!iso) {
-    io.err(`Durée invalide : ${since} (attendu : 30m, 24h, 7d ou date RFC 3339)`);
+    io.err(`Invalid duration: ${since} (expected: 30m, 24h, 7d or an RFC 3339 date)`);
     return 1;
   }
   try {
     const { events } = (await call("logs", { since: iso }, { socket })) as unknown as { events: Ev[] };
-    io.out(events.length === 0 ? "Aucun événement" : events.map((e) => (json ? JSON.stringify(e) : formatEvent(e))).join("\n"));
+    io.out(events.length === 0 ? "No events" : events.map((e) => (json ? JSON.stringify(e) : formatEvent(e))).join("\n"));
     return 0;
   } catch (e) {
     return rpcFailure(e, io);
@@ -96,32 +96,32 @@ async function defaultAsk(q: string): Promise<string> {
 async function panicOffCmd(yes: boolean, io: IO, socket?: string): Promise<number> {
   if (!yes) {
     if (!(io.isTTY ?? process.stdin.isTTY)) {
-      io.err("panic-off : confirmation impossible, utilisez --yes en non interactif");
+      io.err("panic-off: cannot confirm, use --yes when non-interactive");
       return 1;
     }
-    const a = await (io.ask ?? defaultAsk)("Supprimer le kill switch et couper le tunnel ? Tapez « oui » : ");
-    if (a !== "oui") {
-      io.err("Annulé");
+    const a = await (io.ask ?? defaultAsk)("Remove the kill switch and drop the tunnel? Type \"yes\": ");
+    if (a !== "yes") {
+      io.err("Cancelled");
       return 1;
     }
   }
   try {
     await call("panic_off", undefined, { socket });
     const s = await getStatus(io, socket);
-    io.out(`Kill switch supprimé et tunnel coupé.\n${formatStatus(s)}`);
+    io.out(`Kill switch removed and tunnel dropped.\n${formatStatus(s)}`);
     return 0;
   } catch (e) {
     const code = rpcFailure(e, io);
-    io.err("en dernier recours (root) : vpn-tuid --panic-off, ou nft delete table inet vpn_tui");
+    io.err("last resort (root): vpn-tuid --panic-off, or nft delete table inet vpn_tui");
     return code;
   }
 }
 
 function rpcFailure(e: unknown, io: IO): number {
   if (e instanceof RpcError) {
-    io.err(e.code === -32001 ? `Accès refusé par le daemon : ${e.message}` : `Erreur du daemon (${e.code}) : ${e.message}`);
+    io.err(e.code === -32001 ? `Access denied by the daemon: ${e.message}` : `Daemon error (${e.code}): ${e.message}`);
   } else if (e instanceof TransportError) {
-    io.err(`Erreur : ${e.message}`);
+    io.err(`Error: ${e.message}`);
   } else throw e;
   return 3;
 }
@@ -129,10 +129,10 @@ function rpcFailure(e: unknown, io: IO): number {
 type Profile = { id: string; name: string; type: string; tags: string[]; scope: { cidrs: string[] }; has_secrets: boolean };
 
 function formatList(ps: Profile[]): string {
-  if (ps.length === 0) return "Aucun profil";
+  if (ps.length === 0) return "No profiles";
   const rows = [
-    ["ID", "NOM", "TYPE", "TAGS", "SCOPE", "SECRETS"],
-    ...ps.map((p) => [p.id, p.name, p.type, p.tags.join(",") || "-", p.scope.cidrs.join(",") || "-", p.has_secrets ? "oui" : "non"]),
+    ["ID", "NAME", "TYPE", "TAGS", "SCOPE", "SECRETS"],
+    ...ps.map((p) => [p.id, p.name, p.type, p.tags.join(",") || "-", p.scope.cidrs.join(",") || "-", p.has_secrets ? "yes" : "no"]),
   ];
   const w = rows[0]!.map((_, c) => Math.max(...rows.map((r) => [...r[c]!].length)));
   return rows.map((r) => r.map((x, c) => x + " ".repeat(w[c]! - [...x].length)).join("  ").trimEnd()).join("\n");
@@ -147,7 +147,7 @@ async function importCmd(file: string, name: string | undefined, idOpt: string |
     pname = name ?? basename(file).replace(/\.[^.]*$/, "");
     id = idOpt ?? slugify(pname);
   } catch (e) {
-    io.err(`Import impossible : ${(e as Error).message}`);
+    io.err(`Import failed: ${(e as Error).message}`);
     return 1;
   }
   const endpoint = type === "openvpn" ? /^\s*remote\s+(\S+(?:\s+\d+)?)/m.exec(content)?.[1] : /^\s*Endpoint\s*=\s*(\S+)/im.exec(content)?.[1];
@@ -168,19 +168,19 @@ async function importCmd(file: string, name: string | undefined, idOpt: string |
       try {
         await call("profile_delete", { id }, { socket });
       } catch {
-        extra = ` ; ATTENTION : le profil "${id}" n'a pas pu être retiré du daemon (supprimez-le manuellement)`;
+        extra = ` ; WARNING: profile "${id}" could not be removed from the daemon (delete it manually)`;
       }
-      io.err(`Échec du stockage des secrets dans le keyring : ${(e as Error).message}${extra || " (import annulé)"}`);
+      io.err(`Failed to store secrets in the keyring: ${(e as Error).message}${extra || " (import cancelled)"}`);
       return 1;
     }
   }
   io.out(
     [
-      `Profil importé : ${pname}`,
+      `Profile imported: ${pname}`,
       `  type    : ${type}`,
       `  id      : ${id}`,
-      ...(endpoint ? [`  serveur : ${endpoint}`] : []),
-      `  secrets : ${secrets ? "extraits vers le keyring" : "aucun"}`,
+      ...(endpoint ? [`  server  : ${endpoint}`] : []),
+      `  secrets : ${secrets ? "moved to the keyring" : "none"}`,
     ].join("\n"),
   );
   return 0;
@@ -197,7 +197,7 @@ async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
     const { profiles } = (await call("list", undefined, { socket })) as unknown as { profiles: Profile[] };
     const p = profiles.find((x) => x.id === id);
     if (!p) {
-      io.err(`Profil inconnu : ${id}`);
+      io.err(`Unknown profile: ${id}`);
       return 1;
     }
     let params: { id: string; secrets?: unknown } = { id };
@@ -206,11 +206,11 @@ async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
       try {
         secrets = await loadSecrets(id);
       } catch (e) {
-        io.err(`Lecture du keyring impossible pour ${id} : ${(e as Error).message}`);
+        io.err(`Cannot read the keyring for ${id}: ${(e as Error).message}`);
         return 1;
       }
       if (!secrets) {
-        io.err(`secrets introuvables dans le keyring pour ${id} : réimportez le profil`);
+        io.err(`secrets not found in the keyring for ${id}: re-import the profile`);
         return 1;
       }
       params = { id, secrets };
@@ -219,7 +219,7 @@ async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
       await call("up", params, { socket, timeoutMs: 90_000 });
     } catch (e) {
       if (!(e instanceof RpcError)) throw e;
-      io.err(`Erreur du daemon (${e.code}) : ${e.message}`);
+      io.err(`Daemon error (${e.code}): ${e.message}`);
       return 1;
     }
     io.out(formatStatus(await getStatus(io, socket)));
@@ -254,13 +254,13 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
     return 0;
   }
   if (positionals.length === 0) {
-    io.err(`TUI non implémenté\n${USAGE}`);
+    io.err(`TUI not implemented\n${USAGE}`);
     return 1;
   }
   const [cmd, ...rest] = positionals;
   if (cmd === "import") {
     if (rest.length !== 1) {
-      io.err(`import : un fichier est requis (et un seul)\n${USAGE}`);
+      io.err(`import: exactly one file is required\n${USAGE}`);
       return 1;
     }
     return importCmd(rest[0]!, values.name, values.id, io, socket);
@@ -276,7 +276,7 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
   }
   if (cmd === "up") {
     if (rest.length !== 1) {
-      io.err(`up : un identifiant de profil est requis (et un seul)\n${USAGE}`);
+      io.err(`up: exactly one profile id is required\n${USAGE}`);
       return 1;
     }
     return upCmd(rest[0]!, io, socket);
@@ -304,7 +304,7 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
     }
   }
   if (cmd !== "status" || rest.length > 0) {
-    io.err(`Commande inconnue : ${positionals.join(" ")}\n${USAGE}`);
+    io.err(`Unknown command: ${positionals.join(" ")}\n${USAGE}`);
     return 1;
   }
   try {

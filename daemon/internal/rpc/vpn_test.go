@@ -109,19 +109,19 @@ func TestVPNMethods(t *testing.T) {
 
 	// errors
 	if m := req(t, path, "up", map[string]any{"id": "wg1"}); code(m) != CodeInvalidPar {
-		t.Errorf("sans secrets: %v", m)
+		t.Errorf("without secrets: %v", m)
 	}
 	if m := req(t, path, "up", map[string]any{"id": "nope", "secrets": map[string]any{"private_key": key("X")}}); code(m) != CodeNotFound {
-		t.Errorf("inconnu: %v", m)
+		t.Errorf("unknown: %v", m)
 	}
 	if m := req(t, path, "up", map[string]any{"id": 1}); code(m) != CodeInvalidPar {
-		t.Errorf("params invalides: %v", m)
+		t.Errorf("invalid params: %v", m)
 	}
 	if m, _ := call(t, path, `{"jsonrpc":"2.0","id":1,"method":"up"}`); code(m) != CodeInvalidPar {
-		t.Errorf("params absents: %v", m)
+		t.Errorf("missing params: %v", m)
 	}
 	if m := req(t, path, "scope_learn_accept", map[string]any{"id": "wg1", "cidrs": []string{"10.1.0.1/24"}}); code(m) != CodeInvalidPar {
-		t.Errorf("cidr non canonique: %v", m)
+		t.Errorf("non-canonical cidr: %v", m)
 	}
 
 	// up / events / status armed
@@ -142,7 +142,7 @@ func TestVPNMethods(t *testing.T) {
 		t.Fatalf("%v", r)
 	}
 	if m := req(t, path, "up", map[string]any{"id": "wg1", "secrets": map[string]any{"private_key": pw}}); code(m) != CodeBusy {
-		t.Errorf("déjà actif: %v", m)
+		t.Errorf("already active: %v", m)
 	}
 
 	// scope_learn_accept
@@ -169,7 +169,7 @@ func TestVPNMethods(t *testing.T) {
 	// failed connection: clear error, locked (kill switch on), schema-conformant status
 	fd.fail.Store(true)
 	m = req(t, path, "up", map[string]any{"id": "wg1", "secrets": map[string]any{"private_key": pw}})
-	if e, _ := m["error"].(map[string]any); e == nil || !strings.Contains(e["message"].(string), "échec de la connexion") {
+	if e, _ := m["error"].(map[string]any); e == nil || !strings.Contains(e["message"].(string), "connection failed") {
 		t.Fatalf("%v", m)
 	}
 	if r := status(); r["state"] != "locked" {
@@ -179,7 +179,7 @@ func TestVPNMethods(t *testing.T) {
 	// no secret anywhere
 	files := logs.String() + rd(t, filepath.Join(run, "state.json")) + rd(t, filepath.Join(run, "events.jsonl"))
 	if strings.Contains(files, "MARKERSECRET") {
-		t.Fatal("secret divulgué dans les logs / state.json / events.jsonl")
+		t.Fatal("secret leaked in logs / state.json / events.jsonl")
 	}
 
 	// subscriber ends cleanly when the client closes

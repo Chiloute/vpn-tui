@@ -1,4 +1,4 @@
-// Package netinfo regroupe des utilitaires netlink partagés (lecture seule).
+// Package netinfo groups shared (read-only) netlink helpers.
 package netinfo
 
 import (
@@ -11,10 +11,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// WGTable est la table de routage du tunnel complet (fwmark, comme wg-quick).
+// WGTable is the full-tunnel routing table (fwmark, like wg-quick).
 const WGTable = 51820
 
-// IPv4 renvoie la première adresse IPv4 de l'interface.
+// IPv4 returns the first IPv4 address of the interface.
 func IPv4(iface string) (netip.Addr, error) {
 	l, err := netlink.LinkByName(iface)
 	if err != nil {
@@ -29,16 +29,16 @@ func IPv4(iface string) (netip.Addr, error) {
 			return ip, nil
 		}
 	}
-	return netip.Addr{}, fmt.Errorf("aucune adresse IPv4 sur %s", iface)
+	return netip.Addr{}, fmt.Errorf("no IPv4 address on %s", iface)
 }
 
-// Exists indique si l'interface existe.
+// Exists reports whether the interface exists.
 func Exists(iface string) bool {
 	_, err := netlink.LinkByName(iface)
 	return err == nil
 }
 
-// Routes renvoie les routes (tables main et 51820) dont l'oif est iface.
+// Routes returns the routes (main and 51820 tables) whose oif is iface.
 func Routes(iface string) ([]netip.Prefix, error) {
 	l, err := netlink.LinkByName(iface)
 	if err != nil {
@@ -62,7 +62,7 @@ func Routes(iface string) ([]netip.Prefix, error) {
 
 var linkLocal = netip.MustParsePrefix("fe80::/64")
 
-// filterRoutes retire fe80::/64 et les routes « connected » (proto kernel) des adresses de l'interface.
+// filterRoutes drops fe80::/64 and the "connected" routes (proto kernel) from the interface addresses.
 func filterRoutes(rs []netlink.Route, addrs []netlink.Addr) []netip.Prefix {
 	own := map[netip.Prefix]bool{}
 	for _, a := range addrs {
@@ -81,7 +81,7 @@ func filterRoutes(rs []netlink.Route, addrs []netlink.Addr) []netip.Prefix {
 	return out
 }
 
-// toPrefix convertit un IPNet ; nil = route par défaut de la famille fam.
+// toPrefix converts an IPNet; nil = default route of family fam.
 func toPrefix(n *net.IPNet, fam int) (netip.Prefix, bool) {
 	if n == nil {
 		if fam == unix.AF_INET6 {
@@ -96,12 +96,12 @@ func toPrefix(n *net.IPNet, fam int) (netip.Prefix, bool) {
 	ones, _ := n.Mask.Size()
 	ip = ip.Unmap()
 	if ip.Is4() && len(n.Mask) == net.IPv6len {
-		ones -= 96 // masque sur 16 octets
+		ones -= 96 // mask over 16 bytes
 	}
 	return netip.PrefixFrom(ip, ones), true
 }
 
-// WatchGone renvoie un canal fermé quand l'interface disparaît (ou si ctx est annulé).
+// WatchGone returns a channel closed when the interface disappears (or if ctx is cancelled).
 func WatchGone(ctx context.Context, iface string) <-chan struct{} {
 	gone := make(chan struct{})
 	ch := make(chan netlink.LinkUpdate)
@@ -113,7 +113,7 @@ func WatchGone(ctx context.Context, iface string) <-chan struct{} {
 	go func() {
 		defer close(gone)
 		defer close(done)
-		// abonné d'abord, puis vérification : pas de fenêtre manquée
+		// subscribe first, then check: no missed window
 		if !Exists(iface) {
 			return
 		}

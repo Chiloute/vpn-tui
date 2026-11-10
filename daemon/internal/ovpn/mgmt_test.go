@@ -81,6 +81,6 @@ func TestMgmtCommand(t *testing.T) {
 		t.Fatalf("got %+v", n)
 	}
 	if err := m.command("bad"); err == nil {
-		t.Fatal("ERROR: attendu")
+		t.Fatal("ERROR: expected")
 	}
 }
