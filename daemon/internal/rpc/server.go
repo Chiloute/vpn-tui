@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Chiloute/vpn-tui/daemon/internal/profile"
 	"github.com/Chiloute/vpn-tui/proto"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"golang.org/x/sys/unix"
@@ -39,6 +40,8 @@ type Server struct {
 	IdleTimeout time.Duration
 	// Busy extends the lifetime of the daemon (e.g. an active VPN).
 	Busy func() bool
+	// Store backs list/profile_*; nil answers not_implemented.
+	Store *profile.Store
 
 	request, response *jsonschema.Schema
 	active            atomic.Int64
@@ -221,6 +224,14 @@ func (s *Server) dispatch(line []byte) (any, any, *rpcError) {
 	m := v.(map[string]any)
 	if m["method"] == "status" {
 		return m["id"], disarmedStatus, nil
+	}
+	var env struct {
+		Method string
+		Params json.RawMessage
+	}
+	json.Unmarshal(line, &env)
+	if res, e, ok := s.profileMethod(env.Method, env.Params); ok {
+		return m["id"], res, e
 	}
 	return m["id"], nil, &rpcError{CodeNotImplemen, "not_implemented"}
 }
