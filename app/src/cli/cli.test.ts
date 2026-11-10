@@ -124,7 +124,7 @@ Endpoint = 1.2.3.4:51820
 AllowedIPs = 10.0.0.0/24
 `;
 const prof = (o = {}) => ({
-  id: "thm", name: "thm", type: "openvpn", tags: ["ctf"], color: "#ffffff",
+  id: "thm", name: "thm", type: "openvpn", tags: ["ctf"], color: "base0D",
   scope: { cidrs: ["10.0.0.0/8"], exclude: [], learned: [] },
   killswitch: { enabled: true, allow_internet: false, block_ipv6: true }, dns: { servers: [], force: false }, has_secrets: true, ...o,
 });
@@ -232,4 +232,104 @@ test("list vide et daemon injoignable", async () => {
   expect((await run(["list"])).code).toBe(3);
   await serve(ok({ profiles: [] }));
   expect((await run(["list"])).out).toBe("Aucun profil");
+});
+
+// ---- up / down / lhost ----
+let cache: string, oldCache: string | undefined;
+beforeEach(() => {
+  cache = join(dir, "cache");
+  oldCache = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = cache;
+});
+afterEach(() => {
+  if (oldCache === undefined) delete process.env.XDG_CACHE_HOME;
+  else process.env.XDG_CACHE_HOME = oldCache;
+});
+const lhostFile = () => join(cache, "vpn-tui", "lhost");
+
+function lifecycle(profiles: unknown[], st = status("armed")) {
+  return serve((req) => {
+    if (req.method === "list") return ok({ profiles })(req);
+    if (req.method === "status") return ok(st)(req);
+    return ok({ ok: true })(req);
+  });
+}
+const methods = () => received.map((r) => JSON.parse(r).method);
+
+test("up openvpn : secrets du keyring envoyés, LHOST écrit", async () => {
+  fakeTool();
+  writeFileSync(join(kdir, "store"), JSON.stringify({ username: "uuu", password: "ppp" }));
+  writeFileSync(tool, `#!/bin/sh\ncat "${kdir}/store"\n`);
+  await lifecycle([prof()]);
+  const r = await run(["up", "thm"]);
+  expect(r.code).toBe(0);
+  expect(methods()).toEqual(["list", "up", "status"]);
+  expect(JSON.parse(received[1]!).params).toEqual({ id: "thm", secrets: { username: "uuu", password: "ppp" } });
+  expect(r.out).toBe("● CONNECTÉ thm  LHOST 10.8.0.2  KILLSWITCH ON");
+  expect(readFileSync(lhostFile(), "utf8")).toBe("10.8.0.2\n");
+  expect(r.out + r.err).not.toMatch(/uuu|ppp/);
+});
+
+test("up sans secrets : pas de champ secrets", async () => {
+  await lifecycle([prof({ id: "wg0", type: "wireguard", has_secrets: false })]);
+  expect((await run(["up", "wg0"])).code).toBe(0);
+  expect(JSON.parse(received[1]!).params).toEqual({ id: "wg0" });
+});
+
+test("up : secrets absents -> exit 1 sans appel up", async () => {
+  fakeTool();
+  writeFileSync(tool, "#!/bin/sh\nexit 1\n");
+  await lifecycle([prof()]);
+  const r = await run(["up", "thm"]);
+  expect(r.code).toBe(1);
+  expect(r.err).toBe("secrets introuvables dans le keyring pour thm : réimportez le profil");
+  expect(methods()).toEqual(["list"]);
+});
+
+test("up : profil inconnu -> 1 ; erreur daemon -> 1 ; injoignable -> 3", async () => {
+  await lifecycle([prof({ has_secrets: false })]);
+  const r = await run(["up", "zzz"]);
+  expect(r.code).toBe(1);
+  expect(r.err).toContain("Profil inconnu");
+  server!.close();
+  await serve((req) =>
+    req.method === "list" ? ok({ profiles: [prof({ has_secrets: false })] })(req) : { jsonrpc: "2.0", id: req.id, error: { code: -32002, message: "boom" } },
+  );
+  const e = await run(["up", "thm"]);
+  expect(e.code).toBe(1);
+  expect(e.err).toContain("boom");
+  rmSync(sock, { force: true });
+  expect((await run(["up", "thm"])).code).toBe(3);
+});
+
+test("down : LHOST vidé", async () => {
+  mkdirSync(join(cache, "vpn-tui"), { recursive: true });
+  writeFileSync(lhostFile(), "10.8.0.2\n");
+  await lifecycle([], status("disarmed"));
+  const r = await run(["down"]);
+  expect(r.code).toBe(0);
+  expect(methods()).toEqual(["down", "status"]);
+  expect(readFileSync(lhostFile(), "utf8")).toBe("");
+});
+
+test("lhost avec et sans IP", async () => {
+  await lifecycle([]);
+  const a = await run(["lhost"]);
+  expect([a.code, a.out]).toEqual([0, "10.8.0.2"]);
+  expect(readFileSync(lhostFile(), "utf8")).toBe("10.8.0.2\n");
+  server!.close();
+  await lifecycle([], status("disarmed"));
+  const b = await run(["lhost"]);
+  expect([b.code, b.out]).toEqual([1, ""]);
+  expect(readFileSync(lhostFile(), "utf8")).toBe("");
+});
+
+test("status met à jour LHOST ; écriture impossible -> avertissement seulement", async () => {
+  await lifecycle([]);
+  expect((await run(["status"])).code).toBe(0);
+  expect(readFileSync(lhostFile(), "utf8")).toBe("10.8.0.2\n");
+  process.env.XDG_CACHE_HOME = "/proc/nope";
+  const r = await run(["status"]);
+  expect(r.code).toBe(0);
+  expect(r.err).toContain("Avertissement");
 });
