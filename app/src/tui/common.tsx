@@ -6,10 +6,10 @@ import type { State } from "../store";
 import { useTui } from "./ctx";
 
 export const [selectedId, setSelectedId] = createSignal<string | null>(null);
-/** Vue « edit » : création d'un profil (n) ou édition du profil sélectionné (e). */
+/** "edit" view: create a profile (n) or edit the selected profile (e). */
 export const [formMode, setFormMode] = createSignal<"create" | "edit">("edit");
 
-/** Libellé du spinner de SectionHeader selon busy / reconnexion, null si rien en cours. */
+/** SectionHeader spinner label depending on busy / reconnecting, null if nothing in progress. */
 export function loadingLabel(s: State): string | null {
   switch (s.busy) {
     case "up": return "Connecting…";

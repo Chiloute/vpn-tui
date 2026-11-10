@@ -24,7 +24,7 @@ func needNetns(t *testing.T) {
 		t.Skip("nft absent")
 	}
 	if err := DeleteTable(); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN / nftables (%v)", err)
+		t.Skipf("no CAP_NET_ADMIN / nftables (%v)", err)
 	}
 }
 
@@ -101,7 +101,7 @@ func TestApplyMatchesRender(t *testing.T) {
 		t.Errorf("TableExists after Disarm = %v, %v", ok, err)
 	}
 	if got := nftRun(t, "list", "table", "inet", "autre"); got != other {
-		t.Errorf("autre table modified:\n%s\n!=\n%s", got, other)
+		t.Errorf("other table modified:\n%s\n!=\n%s", got, other)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestBehavior(t *testing.T) {
 			}
 		}
 	}
-	check("sans règles", true, true, true)
+	check("no rules", true, true, true)
 	if err := fw.Lock(s); err != nil {
 		t.Fatal(err)
 	}

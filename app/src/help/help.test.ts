@@ -9,7 +9,7 @@ import { renderKeysMd } from "./markdown";
 const yamlPath = new URL("../../config/default.yaml", import.meta.url);
 const defaults = parse(readFileSync(yamlPath, "utf8")).keybinds as Record<string, string>;
 
-test("chaque vue a rôle, commandes et section kill switch", () => {
+test("each view has a role, commands and a kill switch section", () => {
   for (const v of Object.values(views)) {
     expect(v.role.length).toBeGreaterThan(10);
     expect(v.commands.length).toBeGreaterThan(0);
@@ -18,24 +18,24 @@ test("chaque vue a rôle, commandes et section kill switch", () => {
   expect(killswitch.panicOff).toContain("nft delete table inet vpn_tui");
 });
 
-test("default.yaml est aligné sur la table", () => {
+test("default.yaml matches the table", () => {
   const all = [...globalCommands, ...Object.values(views).flatMap((v) => v.commands)];
   expect(Object.keys(defaults).sort()).toEqual(all.map((c) => c.name).sort());
   for (const c of all) expect(defaults[c.name]).toBe(c.defaultKey);
 });
 
-test("resolveBindings : défauts et surcharge", () => {
+test("resolveBindings: defaults and override", () => {
   const r = resolveBindings({ keybinds: defaults });
   expect(r.profiles.find((c) => c.name === "profiles.import")?.key).toBe("i");
   const o = resolveBindings({ keybinds: { ...defaults, "profiles.import": "a" } });
   expect(o.profiles.find((c) => c.name === "profiles.import")?.key).toBe("a");
 });
 
-test("conflit de touches vue + global détecté", () => {
+test("view + global key conflict detected", () => {
   expect(() => resolveBindings({ keybinds: { ...defaults, "profiles.import": "q" } })).toThrow(/Key conflict.*"q"/);
 });
 
-test("surcharge utilisateur via loadMergedProjectConfig", async () => {
+test("user override via loadMergedProjectConfig", async () => {
   const dir = mkdtempSync(join(tmpdir(), "vpn-tui-"));
   mkdirSync(join(dir, "vpn-tui"));
   writeFileSync(join(dir, "vpn-tui", "config.yaml"), "keybinds:\n  profiles.import: a\n");
@@ -44,6 +44,6 @@ test("surcharge utilisateur via loadMergedProjectConfig", async () => {
   expect(resolveBindings(loadConfig()).profiles.find((c) => c.name === "profiles.import")?.key).toBe("a");
 });
 
-test("docs/keys.md est à jour", () => {
+test("docs/keys.md is up to date", () => {
   expect(readFileSync(new URL("../../../docs/keys.md", import.meta.url), "utf8")).toBe(renderKeysMd());
 });

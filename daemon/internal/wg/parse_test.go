@@ -22,37 +22,37 @@ func TestParse(t *testing.T) {
 	good := load(t, "client.conf")
 	rep := func(old, new string) string { return strings.Replace(good, old, new, 1) }
 	cases := []struct{ name, in, want string }{
-		{"avec-secrets", load(t, "avec-secrets.conf"), "plaintext secret"},
+		{"with-secrets", load(t, "with-secrets.conf"), "plaintext secret"},
 		{"postup", load(t, "postup.conf"), "script forbidden"},
 		{"saveconfig", load(t, "saveconfig.conf"), "disk write"},
 		{"predown", rep("MTU = 1380", "PreDown = x"), "script forbidden"},
 		{"table", rep("MTU = 1380", "Table = off"), "routing"},
 		{"fwmark", rep("MTU = 1380", "FwMark = 1"), "routing"},
-		{"privatekey clair", rep("PrivateKey = @keyring", "PrivateKey = "+k), "plaintext secret"},
+		{"plaintext privatekey", rep("PrivateKey = @keyring", "PrivateKey = "+k), "plaintext secret"},
 		{"unknown", rep("MTU = 1380", "Foo = 1"), "unknown"},
-		{"privatekey manquante", rep("PrivateKey = @keyring\n", ""), "missing PrivateKey"},
-		{"cidr invalide", rep("10.0.0.2/32", "10.0.0.2"), "invalid CIDR"},
-		{"address vide", rep("Address = 10.0.0.2/32, fd00::2/128", "Address ="), "empty list"},
-		{"dns domaine", rep("DNS = 10.0.0.1", "DNS = example.com"), "domain"},
-		{"mtu bas", rep("1380", "100"), "MTU"},
-		{"mtu haut", rep("1380", "9001"), "MTU"},
-		{"publickey invalide", rep(k, "abc"), "PublicKey"},
-		{"allowedips manquante", rep("AllowedIPs = 0.0.0.0/0, ::/0\n", ""), "missing AllowedIPs"},
+		{"missing privatekey", rep("PrivateKey = @keyring\n", ""), "missing PrivateKey"},
+		{"invalid cidr", rep("10.0.0.2/32", "10.0.0.2"), "invalid CIDR"},
+		{"empty address", rep("Address = 10.0.0.2/32, fd00::2/128", "Address ="), "empty list"},
+		{"dns domain", rep("DNS = 10.0.0.1", "DNS = example.com"), "domain"},
+		{"low mtu", rep("1380", "100"), "MTU"},
+		{"high mtu", rep("1380", "9001"), "MTU"},
+		{"invalid publickey", rep(k, "abc"), "PublicKey"},
+		{"missing allowedips", rep("AllowedIPs = 0.0.0.0/0, ::/0\n", ""), "missing AllowedIPs"},
 		{"keepalive", rep("= 25", "= 70000"), "PersistentKeepalive"},
 		{"endpoint", rep("vpn.example.com:51820", "vpn.example.com"), "Endpoint"},
-		{"sans peer", good[:strings.Index(good, "[Peer]")], "[Peer]"},
-		{"deux interface", good + "\n[Interface]\n", "only one"},
+		{"no peer", good[:strings.Index(good, "[Peer]")], "[Peer]"},
+		{"two interfaces", good + "\n[Interface]\n", "only one"},
 		{"unknown section", good + "\n[Foo]\n", "unknown section"},
 		{"nul", good + "\x00", "NUL"},
 		{"utf8", good + "\xff", "UTF-8"},
 		{"too large", good + strings.Repeat("#", MaxSize), "too large"},
-		{"dupliquée", good + "AllowedIPs = 10.0.0.0/8\n", "duplicate key"},
+		{"duplicate", good + "AllowedIPs = 10.0.0.0/8\n", "duplicate key"},
 	}
 	for _, c := range cases {
 		_, err := Parse([]byte(c.in))
 		re, ok := err.(*RejectError)
 		if !ok || !strings.Contains(re.Error(), c.want) {
-			t.Errorf("%s: err=%v, attendu %q", c.name, err, c.want)
+			t.Errorf("%s: err=%v, want %q", c.name, err, c.want)
 		}
 	}
 }
@@ -65,7 +65,7 @@ func TestParseOKAndIdempotent(t *testing.T) {
 	}
 	if len(c.Peers) != 2 || !c.Peers[0].HasPresharedKey || c.Peers[1].HasPresharedKey ||
 		c.MTU != 1380 || len(c.Addresses) != 2 || len(c.DNS) != 1 || c.Peers[0].PersistentKeepalive != 25 {
-		t.Fatalf("config inattendue: %+v", c)
+		t.Fatalf("unexpected config: %+v", c)
 	}
 	if !bytes.HasSuffix(c.Sanitized, []byte("\n")) || bytes.Contains(c.Sanitized, []byte("#")) {
 		t.Fatalf("sanitized: %q", c.Sanitized)

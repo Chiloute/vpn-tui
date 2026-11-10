@@ -31,7 +31,7 @@ afterAll(() => {
   else process.env.VPN_TUI_SECRET_TOOL = old;
 });
 
-test("aller-retour store/lookup/clear sans secret dans argv", async () => {
+test("round trip store/lookup/clear without secret in argv", async () => {
   expect(keyringRef("thm")).toBe("vpn-tui/thm");
   expect(await loadSecrets("thm")).toBeNull();
   const s = { username: "u-secret-name", password: "p-secret-word" };
@@ -45,7 +45,7 @@ test("aller-retour store/lookup/clear sans secret dans argv", async () => {
   expect(args).not.toContain("secret-word");
 });
 
-test("id invalide, forme invalide, binaire absent", async () => {
+test("invalid id, invalid shape, binary absent", async () => {
   await expect(loadSecrets("../x")).rejects.toThrow(/invalid/);
   writeFileSync(join(dir, "store"), '{"foo":1}');
   await expect(loadSecrets("thm")).rejects.toThrow(/invalid shape/);

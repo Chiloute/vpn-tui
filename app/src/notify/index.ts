@@ -12,12 +12,12 @@ const TITLES: Record<string, [string, "critical" | "normal"]> = {
   scope_learned: ["VPN: scope learned", "normal"],
 };
 
-/** Retire les caractères de contrôle, tronque à 200 caractères. */
+/** Strips control characters, truncates to 200 characters. */
 export function clean(s: string, max = 200): string {
   return [...s.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim()].slice(0, max).join("");
 }
 
-/** Arguments de notify-send pour un événement, ou null s'il n'est pas notifiable. */
+/** notify-send arguments for an event, or null if it is not notifiable. */
 export function notifyArgs(e: RpcEvent): string[] | null {
   const t = TITLES[e.kind];
   if (!t) return null;
@@ -33,7 +33,7 @@ export type NotifyOpts = {
   warn?: (s: string) => void;
 };
 
-/** Boucle d'abonnement ; ne rend la main qu'à l'abort du signal. */
+/** Subscription loop; only returns when the signal is aborted. */
 export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
   const bin = o.notifySend ?? process.env.VPN_TUI_NOTIFY_SEND ?? "notify-send";
   const sleep = o.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -79,7 +79,7 @@ export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
   }
 }
 
-/** Sous-commande `vpn-tui notify` : SIGINT/SIGTERM -> sortie propre. */
+/** `vpn-tui notify` subcommand: SIGINT/SIGTERM -> clean exit. */
 export async function notifyCmd(socket?: string): Promise<number> {
   const ac = new AbortController();
   const stop = () => ac.abort();

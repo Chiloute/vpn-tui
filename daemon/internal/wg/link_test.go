@@ -1,8 +1,8 @@
-// Les tests d'intégration (deux netns reliés par veth) se lancent avec :
+// Integration tests (two netns linked by a veth) run with:
 //
 //	unshare -Urn go test ./daemon/internal/wg/ ./daemon/internal/netinfo/
 //
-// Sans CAP_NET_ADMIN ils sont skippés ; les tests unitaires tournent partout.
+// Without CAP_NET_ADMIN they are skipped; unit tests run everywhere.
 package wg
 
 import (
@@ -46,9 +46,9 @@ func TestBuildConfig(t *testing.T) {
 	if *cfg.FirewallMark != fwmark || *cfg.ListenPort != 1234 || p0.Endpoint.String() != "192.0.2.1:51820" ||
 		p0.PresharedKey == nil || p1.PresharedKey != nil || p1.Endpoint != nil ||
 		*p0.PersistentKeepaliveInterval != 25*time.Second || p0.AllowedIPs[0].String() != "10.0.0.0/24" {
-		t.Fatalf("config inattendue : %+v", cfg)
+		t.Fatalf("unexpected config : %+v", cfg)
 	}
-	// erreurs sans fuite de secret
+	// errors do not leak secrets
 	_, err = buildConfig(c, "SECRETSECRET", psk.String(), eps, 0)
 	if err == nil || strings.Contains(err.Error(), "SECRETSECRET") {
 		t.Fatalf("err = %v", err)
@@ -57,7 +57,7 @@ func TestBuildConfig(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err = buildConfig(c, priv.String(), psk.String(), eps[:1], 0); err == nil {
-		t.Fatal("endpoints/peers incohérents acceptés")
+		t.Fatal("inconsistent endpoints/peers accepted")
 	}
 }
 
@@ -80,14 +80,14 @@ func TestResolve(t *testing.T) {
 		t.Fatalf("%v %v", got, err)
 	}
 	if _, err := Resolve(context.Background(), &Config{Peers: []Peer{{Endpoint: "nonexistent.invalid:1"}}}); err == nil {
-		t.Fatal("endpoint irrésolvable accepté")
+		t.Fatal("unresolvable endpoint accepted")
 	}
 }
 
-// --- intégration ---
+// --- integration ---
 
-// inNS exécute fn dans un thread verrouillé placé dans ns ; le thread n'est jamais
-// rendu au runtime (il se termine avec la goroutine) donc ne pollue aucun autre test.
+// inNS runs fn in a locked thread placed in ns; the thread is never
+// returned to the runtime (it ends with the goroutine) so it pollutes no other test.
 func inNS(t *testing.T, ns netns.NsHandle, fn func()) {
 	t.Helper()
 	done := make(chan struct{})
@@ -117,21 +117,21 @@ const (
 	echoAP  = "10.200.0.1:9999"
 )
 
-// topo crée le second netns, la veth (10.99.0.1 <-> 10.99.0.2), un serveur WireGuard
-// (10.200.0.1, port 51821) et un écho UDP sur echoAP. Renvoie la clé publique serveur
-// et la clé privée du client (dont le serveur autorise 10.200.0.2/32).
+// topo creates the second netns, the veth (10.99.0.1 <-> 10.99.0.2), a WireGuard server
+// (10.200.0.1, port 51821) and a UDP echo on echoAP. Returns the server public key
+// and the client private key (the server allows 10.200.0.2/32).
 func topo(t *testing.T) (srvPub wgtypes.Key, cliPriv wgtypes.Key) {
 	t.Helper()
 	probe := netlink.NewLinkAttrs()
 	probe.Name = "wgprobe0"
 	if err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: probe}); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN/wireguard : %v", err)
+		t.Skipf("no CAP_NET_ADMIN/wireguard: %v", err)
 	}
 	pl, _ := netlink.LinkByName("wgprobe0")
 	must(t, netlink.LinkDel(pl))
 
 	var ns2 netns.NsHandle
-	inNS(t, netns.None(), func() { // thread jetable : netns.New y bascule le thread
+	inNS(t, netns.None(), func() { // throwaway thread: netns.New switches the thread into it
 		var err error
 		ns2, err = netns.New()
 		must2(t, err)
@@ -216,7 +216,7 @@ func echoRoundTrip(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("pas de réponse à travers le tunnel")
+	t.Fatal("no response through the tunnel")
 }
 
 func hasRules(t *testing.T) bool {
@@ -267,17 +267,17 @@ func integration(t *testing.T, allowed []string, full bool) {
 	must(t, err)
 	for _, a := range allowed {
 		if !has(rs, a) {
-			t.Fatalf("Routes %v ne contient pas %s", rs, a)
+			t.Fatalf("Routes %v does not contain %s", rs, a)
 		}
 	}
 	if rx, tx := l.Stats(); rx == 0 || tx == 0 {
 		t.Fatalf("Stats = %d/%d", rx, tx)
 	}
 	if l.LastHandshake().IsZero() {
-		t.Fatal("pas de handshake")
+		t.Fatal("no handshake")
 	}
 	if got := hasRules(t); got != full {
-		t.Fatalf("règles fwmark présentes = %v, attendu %v", got, full)
+		t.Fatalf("fwmark rules present = %v, want %v", got, full)
 	}
 
 	gone := netinfo.WatchGone(context.Background(), "wgcli0")
@@ -285,10 +285,10 @@ func integration(t *testing.T, allowed []string, full bool) {
 	select {
 	case <-gone:
 	case <-time.After(3 * time.Second):
-		t.Fatal("WatchGone non déclenché")
+		t.Fatal("WatchGone not triggered")
 	}
 	if netinfo.Exists("wgcli0") || hasRules(t) {
-		t.Fatal("interface ou règles résiduelles après Down")
+		t.Fatal("leftover interface or rules after Down")
 	}
 	must(t, l.Down()) // idempotent
 }
@@ -305,12 +305,12 @@ func TestUpErrorCleansUp(t *testing.T) {
 	topo(t)
 	c := &Config{Addresses: pfx("10.200.0.9/32"), Peers: []Peer{{PublicKey: wgtypes.Key{1}.String(), AllowedIPs: pfx("0.0.0.0/0")}}}
 	priv, _ := wgtypes.GeneratePrivateKey()
-	// préfixe invalide : l'échec survient après la création de l'interface
+	// invalid prefix: the failure happens after the interface is created
 	c.Addresses = append(c.Addresses, netip.Prefix{})
 	if _, err := Up(context.Background(), "wgbad0", c, priv.String(), "", []netip.AddrPort{{}}); err == nil {
-		t.Fatal("erreur attendue")
+		t.Fatal("error expected")
 	}
 	if netinfo.Exists("wgbad0") || hasRules(t) {
-		t.Fatal("rien ne doit rester après un Up échoué")
+		t.Fatal("nothing must remain after a failed Up")
 	}
 }

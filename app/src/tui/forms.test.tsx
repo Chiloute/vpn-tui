@@ -58,7 +58,7 @@ function fixture(name: string, content: string) {
   return { dir, path };
 }
 
-test("completePath complète un nom unique et le préfixe commun", () => {
+test("completePath completes a unique name and the common prefix", () => {
   const { dir } = fixture("thm-a.ovpn", "x");
   writeFileSync(join(dir, "thm-b.ovpn"), "x");
   mkdirSync(join(dir, "sous"));
@@ -70,14 +70,14 @@ test("completePath complète un nom unique et le préfixe commun", () => {
 for (const size of sizes) {
   const tag = `${size.width}x${size.height}`;
 
-  test(`import : fichier valide, aperçu sans secret, confirmation ${tag}`, async () => {
+  test(`import: valid file, preview without secret, confirmation ${tag}`, async () => {
     const { dir, path } = fixture("thm.ovpn", OVPN());
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("i");
     expect(currentView()).toBe("import");
     await type(join(dir, "th"));
-    await press("tab"); // complète le nom
+    await press("tab"); // completes the name
     expect(frame()).toContain("thm.ovpn");
     await press("enter");
     const f = frame();
@@ -87,8 +87,8 @@ for (const size of sizes) {
     expect(f).not.toContain("dead");
     expect(f).not.toContain("beef");
     expect(s.importProfile).not.toHaveBeenCalled();
-    await press("enter"); // nom -> id
-    await press("enter"); // id -> bouton
+    await press("enter"); // name -> id
+    await press("enter"); // id -> button
     await press("enter"); // Importer
     expect(s.importProfile).toHaveBeenCalledTimes(1);
     const arg = s.importProfile.mock.calls[0]![0] as { filename: string; name: string; id: string };
@@ -96,7 +96,7 @@ for (const size of sizes) {
     expect(currentView()).toBe("profiles");
   });
 
-  test(`import : refus du parseur local, rien n'est importé ${tag}`, async () => {
+  test(`import: local parser rejection, nothing imported ${tag}`, async () => {
     const { dir } = fixture("bad.ovpn", "client\nremote x 1194\nauth-user-pass /etc/secret\n");
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
@@ -108,7 +108,7 @@ for (const size of sizes) {
     expect(currentView()).toBe("import");
   });
 
-  test(`import : refus du daemon (up /bin/sh) affiché ${tag}`, async () => {
+  test(`import: daemon rejection (up /bin/sh) shown ${tag}`, async () => {
     const { dir } = fixture("evil.ovpn", "client\nremote x 1194\nup /bin/sh\n");
     const s = fakeStore({ profiles: [prof()] });
     s.importProfile.mockImplementation(async () => { s.set({ lastError: "Daemon error (-32006): directive interdite : up" }); return undefined; });
@@ -116,14 +116,14 @@ for (const size of sizes) {
     await press("i");
     await type(join(dir, "evil.ovpn"));
     await press("enter");
-    await tabs(2); // nom -> id -> bouton
+    await tabs(2); // name -> id -> button
     await press("enter");
     expect(s.importProfile).toHaveBeenCalledTimes(1);
     expect(frame()).toContain("directive interdite : up");
     expect(currentView()).toBe("import");
   });
 
-  test(`import : escape revient sans rien faire ${tag}`, async () => {
+  test(`import: escape goes back without doing anything ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("i");
@@ -132,7 +132,7 @@ for (const size of sizes) {
     expect(s.importProfile).not.toHaveBeenCalled();
   });
 
-  test(`création OpenVPN valide, secrets masqués ${tag}`, async () => {
+  test(`valid OpenVPN creation, secrets masked ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("n");
@@ -156,19 +156,19 @@ for (const size of sizes) {
     expect(currentView()).toBe("profiles");
   });
 
-  test(`création invalide : erreurs par champ, pas d'appel ${tag}`, async () => {
+  test(`invalid creation: per-field errors, no call ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("n");
     await press("ctrl+s");
     expect(s.createProfile).not.toHaveBeenCalled();
     expect(frame()).toContain("required");
-    await press("stab"); // retour sur le choix du type
+    await press("stab"); // back to the type choice
     await press("right"); // WireGuard
     await tabs(1); await type("wg");
     await tabs(2); await type("10.8.0.2/32");
     await tabs(1); await type("10.8.0.1");
-    await tabs(1); await type("abc"); // clé privée invalide
+    await tabs(1); await type("abc"); // invalid private key
     await tabs(1); await type("B".repeat(43) + "=");
     await tabs(1); await type("wg.example.org:51820");
     await tabs(1); await type("10.10.0.0/16");
@@ -178,7 +178,7 @@ for (const size of sizes) {
     expect(frame()).not.toContain("abc");
   });
 
-  test(`création WireGuard valide ${tag}`, async () => {
+  test(`valid WireGuard creation ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("n");
@@ -200,14 +200,14 @@ for (const size of sizes) {
     });
   });
 
-  test(`édition : block_ipv6 et scope seulement ${tag}`, async () => {
+  test(`edit: block_ipv6 and scope only ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("e");
     expect(currentView()).toBe("edit");
     expect(frame()).toContain("re-import");
     await tabs(3); // cidrs
-    await type("10.1.0.0/16"); // le curseur est en début de zone
+    await type("10.1.0.0/16"); // the cursor is at the start of the field
     await press("enter");
     await tabs(4); // exclude, ks_enabled, allow_internet, block_ipv6
     await press("enter"); // bascule
@@ -220,7 +220,7 @@ for (const size of sizes) {
     expect(currentView()).toBe("detail");
   });
 
-  test(`édition : avertissement kill switch, invalid CIDR, annulation confirmée ${tag}`, async () => {
+  test(`edit: kill switch warning, invalid CIDR, confirmed cancel ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("e");
@@ -242,7 +242,7 @@ for (const size of sizes) {
     expect(currentView()).toBe("detail");
   });
 
-  test(`saisie : x, q, ? ne déclenchent aucun raccourci ${tag}`, async () => {
+  test(`typing: x, q, ? trigger no shortcut ${tag}`, async () => {
     const s = fakeStore({ profiles: [prof()] });
     await mount(s, size);
     await press("n");
@@ -253,10 +253,10 @@ for (const size of sizes) {
     expect(s.deleteProfile).not.toHaveBeenCalled();
     expect(s.panicOff).not.toHaveBeenCalled();
     expect(frame()).toContain("xq?!yL");
-    expect(frame()).not.toContain("Supprimer le profil");
-    // import : même garde-fou dans le champ chemin
+    expect(frame()).not.toContain("Delete profile");
+    // import: same guard in the path field
     await press("escape");
-    await press("y"); // formulaire modifié : confirmation
+    await press("y"); // form modified: confirmation
     await press("i");
     await type("xq");
     expect(currentView()).toBe("import");

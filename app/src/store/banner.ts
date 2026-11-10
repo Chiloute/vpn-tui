@@ -31,12 +31,12 @@ export type Banner = {
   lhost: string | null;
   scope: { cidrs: string[]; warning: string | null };
   uptime: string | null; // HH:MM:SS
-  rate: { rx: number; tx: number } | null; // octets/s
+  rate: { rx: number; tx: number } | null; // bytes/s
 };
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
-/** Pure. `ctx.prev` = échantillon rx/tx du status précédent ; `ctx.now` en ms. `busy` n'altère pas le bandeau. */
+/** Pure. `ctx.prev` = rx/tx sample of the previous status; `ctx.now` in ms. `busy` does not alter the banner. */
 export function bannerModel(
   s: Status | null,
   profiles: Profile[],

@@ -21,7 +21,7 @@ export function Banner() {
         when={state().daemonReachable}
         fallback={
           <box flexShrink={0}>
-            {/* avant tout refresh : ni status ni erreur reçus, le daemon n'est pas encore jugé injoignable */}
+            {/* before any refresh: no status or error received, the daemon is not yet considered unreachable */}
             <Show when={state().status === null && state().lastError === null} fallback={<Badge label="daemon unreachable" color={theme.error} />}>
               <Badge label="connecting to daemon…" color={theme.muted} />
             </Show>

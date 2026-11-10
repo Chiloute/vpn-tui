@@ -10,6 +10,6 @@ export async function runTui(): Promise<void> {
   const bindings = resolveBindings(loadConfig());
   const store = createStore();
   registerTuiViews();
-  void store.start(); // relit l'état réel du daemon à chaque lancement ; stop() est appelé par Shell à la sortie
+  void store.start(); // re-reads the daemon's real state on each launch; stop() is called by Shell on exit
   await render(() => <Shell bindings={bindings} store={store} />);
 }

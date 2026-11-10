@@ -1,5 +1,5 @@
-// Source unique de l'aide : raccourcis, prose des vues, section Kill switch.
-// Consommée par le TUI (useBindings, modale d'aide), config/default.yaml (noms) et docs/keys.md.
+// Single source of the help: shortcuts, view prose, Kill switch section.
+// Consumed by the TUI (useBindings, help modal), config/default.yaml (names) and docs/keys.md.
 
 export type Cmd = { name: string; desc: string; defaultKey: string; shortHelp?: boolean };
 
@@ -13,7 +13,7 @@ export type View = {
 };
 
 const KEY_NAMES: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→", pageup: "PgUp", pagedown: "PgDn", escape: "Esc", return: "Enter" };
-/** "up,down,j,k" -> "↑ ↓ j k" pour l'affichage. */
+/** "up,down,j,k" -> "↑ ↓ j k" for display. */
 export const prettyKey = (key: string): string =>
   key.split(",").map((k) => KEY_NAMES[k.trim()] ?? k.trim().replace(/^shift\+(\w)$/, (_, c: string) => c.toUpperCase())).join(" ");
 

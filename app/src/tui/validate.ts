@@ -18,13 +18,13 @@ export const lines = (s: string): string[] => s.split("\n").map((l) => l.trim())
 
 const port = (s: string) => /^\d{1,5}$/.test(s) && Number(s) >= 1 && Number(s) <= 65535;
 
-/** Vérifie que chaque élément satisfait `ok` ; renvoie l'erreur listant les invalides. */
+/** Checks that each item satisfies `ok`; returns the error listing the invalid ones. */
 function badItems(items: string[], ok: (s: string) => boolean, what: string): string | undefined {
   const bad = items.filter((i) => !ok(i));
   return bad.length ? `invalid ${what}: ${bad.join(", ")}` : undefined;
 }
 
-/** Valide le formulaire de création (valeurs en chaînes) ; `form` n'est défini que sans erreur. */
+/** Validates the creation form (string values); `form` is set only when there is no error. */
 export function buildForm(v: Record<string, string>): { errors: Errors; form?: ProfileForm } {
   const e: Errors = {};
   const get = (k: string) => (v[k] ?? "").trim();
@@ -74,7 +74,7 @@ export function buildForm(v: Record<string, string>): { errors: Errors; form?: P
   return { errors: e, form };
 }
 
-/** Valide les champs éditables d'un profil existant. */
+/** Validates the editable fields of an existing profile. */
 export function checkEdit(v: Record<string, string>): { errors: Errors; tags: string[]; cidrs: string[]; exclude: string[]; servers: string[] } {
   const e: Errors = {};
   const name = (v.name ?? "").trim();

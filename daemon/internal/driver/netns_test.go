@@ -1,5 +1,5 @@
-// Intégration (netns rootless) : nix develop -c unshare -Urn go test ./daemon/internal/driver/
-// Sans CAP_NET_ADMIN (ou sans nft) les tests sont skippés.
+// Integration (rootless netns): nix develop -c unshare -Urn go test ./daemon/internal/driver/
+// Without CAP_NET_ADMIN (or without nft) the tests are skipped.
 package driver
 
 import (
@@ -49,16 +49,16 @@ func TestWatchHandshake(t *testing.T) {
 	e.tx.Store(100)
 	dead, cancel := run(e)
 	defer cancel()
-	e.clock.Store(1000) // inactif, très vieux, rien émis : pas de chute
+	e.clock.Store(1000) // idle, very old, nothing sent: no drop
 	if dies(dead) {
-		t.Fatal("tunnel inactif déclaré mort")
+		t.Fatal("idle tunnel declared dead")
 	}
-	e.tx.Store(200) // données émises sans session valide
+	e.tx.Store(200) // data sent without a valid session
 	if !dies(dead) {
-		t.Fatal("trafic émis sans handshake non détecté")
+		t.Fatal("traffic sent without handshake not detected")
 	}
 
-	e = &env{} // handshake récent + trafic : pas de chute
+	e = &env{} // recent handshake + traffic: no drop
 	e.hs.Store(900)
 	e.clock.Store(1000)
 	e.tx.Store(1)
@@ -66,18 +66,18 @@ func TestWatchHandshake(t *testing.T) {
 	defer cancel2()
 	e.tx.Store(999)
 	if dies(dead) {
-		t.Fatal("handshake récent déclaré mort")
+		t.Fatal("recent handshake declared dead")
 	}
-	e.hs.Store(950) // nouveau handshake : base remise à zéro
+	e.hs.Store(950) // new handshake: baseline reset
 	e.clock.Store(1129)
 	e.tx.Store(5000)
 	if dies(dead) {
-		t.Fatal("chute malgré handshake récent")
+		t.Fatal("drop despite recent handshake")
 	}
-	e.clock.Store(1131) // 181s après 950, trafic émis depuis
+	e.clock.Store(1131) // 181s after 950, traffic sent since
 	e.tx.Store(6000)
 	if !dies(dead) {
-		t.Fatal("handshake périmé + trafic non détecté")
+		t.Fatal("stale handshake + traffic not detected")
 	}
 }
 
@@ -89,7 +89,7 @@ func needNetns(t *testing.T) {
 	probe := netlink.NewLinkAttrs()
 	probe.Name = "wgprobe0"
 	if err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: probe}); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN/wireguard : %v", err)
+		t.Skipf("no CAP_NET_ADMIN/wireguard: %v", err)
 	}
 	pl, _ := netlink.LinkByName("wgprobe0")
 	netlink.LinkDel(pl)
@@ -110,7 +110,7 @@ func waitFor(t *testing.T, what string, d time.Duration, f func() bool) {
 			return
 		}
 	}
-	t.Fatalf("délai dépassé : %s", what)
+	t.Fatalf("timeout: %s", what)
 }
 
 // lab: a WireGuard "server" on the loopback of the netns and a profile pointing at it.
@@ -177,19 +177,19 @@ func TestKillSwitchNetns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out := nftList(t); !strings.Contains(out, `oifname "vpntui0" accept`) {
-		t.Fatalf("pas armed :\n%s", out)
+		t.Fatalf("not armed:\n%s", out)
 	}
 	if s := m.Status(); s.State != state.Armed {
 		t.Fatalf("%+v", s)
 	}
 
-	// le serveur oublie le peer : plus de handshake → Dead → verrou
+	// the server forgets the peer: no more handshake → Dead → lock
 	wc, _ := wgctrl.New()
 	defer wc.Close()
 	if err := wc.ConfigureDevice("wgsrv", wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: cliKey.PublicKey(), Remove: true}}}); err != nil {
 		t.Fatal(err)
 	}
-	go func() { // du trafic émis sans session valide déclenche la chute
+	go func() { // traffic sent without a valid session triggers the drop
 		c, err := net.Dial("udp", "10.200.0.1:9")
 		if err != nil {
 			return
@@ -200,18 +200,18 @@ func TestKillSwitchNetns(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}()
-	waitFor(t, "table verrouillée", 15*time.Second, func() bool {
+	waitFor(t, "table locked", 15*time.Second, func() bool {
 		out := nftList(t)
 		return out != "" && !strings.Contains(out, `oifname "vpntui0" accept`)
 	})
 	if out := nftList(t); !strings.Contains(out, "drop") || !strings.Contains(out, `oifname "lo" accept`) {
-		t.Fatalf("pas locked :\n%s", out)
+		t.Fatalf("not locked:\n%s", out)
 	}
 	if s := m.Status().State; s != state.Reconnecting && s != state.Locked {
-		t.Fatalf("état %s", s)
+		t.Fatalf("state %s", s)
 	}
-	// l'interface morte ne traîne pas
-	waitFor(t, "interface démontée", 5*time.Second, func() bool { return !netinfo.Exists(Iface) })
+	// the dead interface does not linger
+	waitFor(t, "interface removed", 5*time.Second, func() bool { return !netinfo.Exists(Iface) })
 }
 
 func TestPanicOffNetns(t *testing.T) {
@@ -222,16 +222,16 @@ func TestPanicOffNetns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(nftList(t), `oifname "vpntui0" accept`) || !netinfo.Exists(Iface) {
-		t.Fatal("pas armed")
+		t.Fatal("not armed")
 	}
 	if err := m.PanicOff(); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := nft.TableExists(); ok || err != nil {
-		t.Fatalf("table encore là : %v %v", ok, err)
+		t.Fatalf("table still present: %v %v", ok, err)
 	}
 	if netinfo.Exists(Iface) {
-		t.Fatal("interface encore là après panic_off")
+		t.Fatal("interface still present after panic_off")
 	}
 }
 
@@ -244,7 +244,7 @@ func TestWireGuardAdoptNetns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := d.Adopt(context.Background(), p, Iface, 0); err == nil {
-		t.Fatal("adoption sans interface")
+		t.Fatal("adoption without interface")
 	}
 	tun, _, err := d.Up(context.Background(), p, state.Secrets{PrivateKey: priv}, eps)
 	if err != nil {
@@ -262,6 +262,6 @@ func TestWireGuardAdoptNetns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if netinfo.Exists(Iface) {
-		t.Fatal("interface encore là")
+		t.Fatal("interface still present")
 	}
 }

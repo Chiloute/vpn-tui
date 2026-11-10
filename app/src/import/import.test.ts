@@ -15,7 +15,7 @@ CERT
 </ca>
 `;
 
-test("openvpn : extraction et suppression du bloc", () => {
+test("openvpn: extraction and block removal", () => {
   const src = ovpn("<auth-user-pass>\n00000000000000000000dead  \n0000000000000000000000000000beef\n</auth-user-pass>");
   const r = extractSecrets("openvpn", src);
   expect(r.secrets).toEqual({ username: "00000000000000000000dead", password: "0000000000000000000000000000beef" });
@@ -26,7 +26,7 @@ test("openvpn : extraction et suppression du bloc", () => {
   expect(r.content).toContain("<ca>");
 });
 
-test("openvpn : erreurs et absence de bloc", () => {
+test("openvpn: errors and missing block", () => {
   expect(extractSecrets("openvpn", "client\n").secrets).toBeNull();
   expect(() => extractSecrets("openvpn", "auth-user-pass creds.txt\n")).toThrow(/not supported/);
   expect(() => extractSecrets("openvpn", ovpn("<auth-user-pass>\nonly\n</auth-user-pass>"))).toThrow(/malformed/);
@@ -43,7 +43,7 @@ PublicKey = ${K3}
 ${psk ? `PresharedKey = ${psk}\n` : ""}Endpoint = 1.2.3.4:51820
 ${extraPeer}`;
 
-test("wireguard : avec et sans PSK", () => {
+test("wireguard: with and without PSK", () => {
   let r = extractSecrets("wireguard", wg());
   expect(r.secrets).toEqual({ private_key: K1 });
   expect(r.content).toBe(wg().replace(K1, "@keyring"));
@@ -52,10 +52,10 @@ test("wireguard : avec et sans PSK", () => {
   expect(r.content).not.toContain(K1);
   expect(r.content).not.toContain(K2);
   expect(r.content).toContain("PresharedKey = @keyring");
-  expect(r.content).toContain(K3); // PublicKey inchangée
+  expect(r.content).toContain(K3); // PublicKey unchanged
 });
 
-test("wireguard : erreurs", () => {
+test("wireguard: errors", () => {
   expect(() => extractSecrets("wireguard", wg().replace(/PrivateKey.*\n/, ""))).toThrow(/missing/);
   expect(() => extractSecrets("wireguard", wg().replace(K1, "court"))).toThrow(/invalid/);
   expect(() => extractSecrets("wireguard", wg(K2, `[Peer]\nPresharedKey = ${K3}\n`))).toThrow(/multiple/);
@@ -67,8 +67,8 @@ test("detectType", () => {
   expect(detectType("[Interface]\nPrivateKey=x", "a.conf")).toBe("wireguard");
   expect(detectType("[Interface]\n")).toBe("wireguard");
   expect(detectType("client\nremote a 1")).toBe("openvpn");
-  expect(() => detectType("rien", "a.conf")).toThrow();
-  expect(() => detectType("rien")).toThrow();
+  expect(() => detectType("nothing", "a.conf")).toThrow();
+  expect(() => detectType("nothing")).toThrow();
 });
 
 test("slugify", () => {

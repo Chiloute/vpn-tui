@@ -30,7 +30,7 @@ function serve(): Promise<void> {
 }
 const until = async (f: () => boolean) => { for (let i = 0; i < 100 && !f(); i++) await Bun.sleep(10); };
 
-test("subscribe : événements, notification invalide ignorée, onClose", async () => {
+test("subscribe: events, invalid notification ignored, onClose", async () => {
   await serve();
   const got: string[] = [], errors: Error[] = [];
   let closed = 0, opened = 0;
@@ -46,7 +46,7 @@ test("subscribe : événements, notification invalide ignorée, onClose", async 
   expect(closed).toBe(1);
 });
 
-test("subscribe : ligne > 64 Kio -> erreur et fermeture ; daemon absent -> onClose", async () => {
+test("subscribe: line > 64 KiB -> error and close; daemon absent -> onClose", async () => {
   await serve();
   let closed = 0, opened = 0;
   const errors: Error[] = [];
@@ -54,7 +54,7 @@ test("subscribe : ligne > 64 Kio -> erreur et fermeture ; daemon absent -> onClo
   await until(() => opened === 1);
   conn!.write("x".repeat(70_000));
   await until(() => closed === 1);
-  expect(errors.some((e) => /trop grande/.test(e.message))).toBe(true);
+  expect(errors.some((e) => /too large/.test(e.message))).toBe(true);
 
   let c2 = 0;
   subscribe(() => {}, { socket: join(dir, "absent.sock"), onClose: () => c2++ });
@@ -62,7 +62,7 @@ test("subscribe : ligne > 64 Kio -> erreur et fermeture ; daemon absent -> onClo
   expect(c2).toBe(1);
 });
 
-test("subscribe : close() ferme et appelle onClose", async () => {
+test("subscribe: close() closes and calls onClose", async () => {
   await serve();
   let closed = 0, opened = 0;
   const s = subscribe(() => {}, { socket: sock, onOpen: () => opened++, onClose: () => closed++ });

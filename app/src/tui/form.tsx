@@ -4,7 +4,7 @@ import { stepTabValue, Tabs, Toggle, type TabItem } from "ilovetui/components";
 import { createEffect, createSignal, For, Show, untrack, type JSX } from "solid-js";
 
 type Common = { when?: () => boolean };
-/** Un champ de formulaire ; `when` masque le champ et le retire de la navigation. Les valeurs sont des chaînes ("1"/"0" pour les bascules). */
+/** A form field; `when` hides the field and removes it from navigation. Values are strings ("1"/"0" for toggles). */
 export type Field = Common &
   (
     | { kind: "text"; id: string; label: string; placeholder?: string }
@@ -35,7 +35,7 @@ export function createFormNav(fields: Field[]) {
 }
 export type FormNav = ReturnType<typeof createFormNav>;
 
-/** Action de la touche Entrée selon le champ : bouton = valider, bascule/choix = changer, sinon champ suivant. */
+/** Enter key action depending on the field: button = submit, toggle/choice = change, otherwise next field. */
 export function activateField(nav: FormNav, values: Values, set: (id: string, v: string) => void, submit: () => void): void {
   const f = nav.field();
   if (!f) return;
@@ -53,7 +53,7 @@ export function Form(props: Props) {
   createEffect(() => {
     const id = props.nav.cur();
     const el = refs.get(id);
-    // différé : le focus initial du ViewPane passe avant celui du champ
+    // deferred: the ViewPane's initial focus runs before the field's
     if (el) queueMicrotask(() => { if (!el.isDestroyed) { el.focus(); box?.scrollChildIntoView(`f-${id}`); } });
   });
   const val = (id: string) => props.values[id] ?? "";
@@ -67,7 +67,7 @@ export function Form(props: Props) {
     switch (f.kind) {
       case "text": {
         let el: InputRenderable | undefined;
-        createEffect(() => { // valeur modifiée hors saisie (complétion de chemin)
+        createEffect(() => { // value changed outside typing (path completion)
           const v = val(f.id);
           if (el && el.value !== v) { el.value = v; el.cursorOffset = v.length; }
         });
@@ -77,7 +77,7 @@ export function Form(props: Props) {
         let el: TextareaRenderable | undefined;
         return <textarea ref={(e: TextareaRenderable) => { el = e; reg(f.id)(e); }} flexGrow={1} height={f.rows ?? 3} initialValue={untrack(() => val(f.id))} onContentChange={() => el && props.set(f.id, el.plainText)} />;
       }
-      case "secret": // l'input OpenTUI ne sait pas masquer : champ maison qui n'affiche que des •
+      case "secret": // the OpenTUI input cannot mask: custom field that only shows •
         return (
           <box
             id={`mask-${f.id}`} ref={reg(f.id)} focusable flexGrow={1} height={1}

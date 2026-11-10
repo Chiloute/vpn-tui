@@ -121,12 +121,12 @@ func validJournal(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 		if err := sch.Validate(v); err != nil {
-			t.Fatalf("événement invalide %s : %v", line, err)
+			t.Fatalf("invalid event %s: %v", line, err)
 		}
 		n++
 	}
 	if n == 0 {
-		t.Fatal("journal vide")
+		t.Fatal("empty journal")
 	}
 }
 

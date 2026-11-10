@@ -16,11 +16,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// fwmark et table du routage « tunnel complet » (identiques à wg-quick).
+// fwmark and table of the full-tunnel routing (same as wg-quick).
 const fwmark = 51820
 
-// Resolve résout l'endpoint de chaque peer (un résultat par peer ; AddrPort
-// zéro si le peer n'a pas d'endpoint).
+// Resolve resolves each peer's endpoint (one result per peer; zero AddrPort
+// if the peer has no endpoint).
 func Resolve(ctx context.Context, c *Config) ([]netip.AddrPort, error) {
 	out := make([]netip.AddrPort, len(c.Peers))
 	for i, p := range c.Peers {
@@ -44,17 +44,17 @@ func Resolve(ctx context.Context, c *Config) ([]netip.AddrPort, error) {
 	return out, nil
 }
 
-// Link est une interface WireGuard montée.
+// Link is a WireGuard interface that is up.
 type Link struct {
 	iface string
-	fams  []int // familles routées par fwmark (tunnel complet)
+	fams  []int // families routed by fwmark (full tunnel)
 	once  sync.Once
 	err   error
 }
 
 func (l *Link) Iface() string { return l.iface }
 
-// fullFamilies renvoie les familles (AF_INET/AF_INET6) ayant un AllowedIPs /0.
+// fullFamilies returns the families (AF_INET/AF_INET6) that have an AllowedIPs /0.
 func fullFamilies(c *Config) []int {
 	var v4, v6 bool
 	for _, p := range c.Peers {
@@ -79,7 +79,7 @@ func ipNet(p netip.Prefix) *net.IPNet {
 	return &net.IPNet{IP: p.Addr().AsSlice(), Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen())}
 }
 
-// buildConfig construit la config wgctrl. Les erreurs ne contiennent jamais de secret.
+// buildConfig builds the wgctrl config. Errors never contain a secret.
 func buildConfig(c *Config, privateKey, presharedKey string, eps []netip.AddrPort, mark int) (wgtypes.Config, error) {
 	if len(eps) != len(c.Peers) {
 		return wgtypes.Config{}, errors.New("endpoint count differs from peer count")
@@ -141,7 +141,7 @@ func delRules(fams []int) {
 	}
 }
 
-// Up crée et configure l'interface. En cas d'erreur, tout est défait.
+// Up creates and configures the interface. On error, everything is undone.
 func Up(ctx context.Context, iface string, c *Config, privateKey, presharedKey string, endpoints []netip.AddrPort) (_ *Link, err error) {
 	l := &Link{iface: iface, fams: fullFamilies(c)}
 	mark := 0
@@ -193,7 +193,7 @@ func Up(ctx context.Context, iface string, c *Config, privateKey, presharedKey s
 	if err := netlink.LinkSetUp(link); err != nil {
 		return nil, err
 	}
-	delRules(l.fams) // règles résiduelles éventuelles
+	delRules(l.fams) // possible leftover rules
 	for _, p := range c.Peers {
 		for _, a := range p.AllowedIPs {
 			table := unix.RT_TABLE_MAIN
@@ -216,12 +216,12 @@ func Up(ctx context.Context, iface string, c *Config, privateKey, presharedKey s
 	return l, nil
 }
 
-// ErrNoHandshake : le serveur n'a pas répondu avant le délai.
+// ErrNoHandshake: the server did not answer before the timeout.
 var ErrNoHandshake = errors.New("no handshake with the server")
 
-// AwaitHandshake force l'initiation du handshake puis attend qu'il soit confirmé (max wait).
-// L'initiation passe par le keepalive noyau (0 -> 1 s déclenche un envoi immédiat) et non par un datagramme
-// via l'interface : le pare-feu verrouillé (reconnexion) l'abandonnerait avant WireGuard. À l'expiration : Down + ErrNoHandshake.
+// AwaitHandshake forces the handshake initiation, then waits for it to be confirmed (max wait).
+// Initiation goes through the kernel keepalive (0 -> 1 s triggers an immediate send), not a datagram
+// via the interface: the locked firewall (reconnect) would drop it before WireGuard. On timeout: Down + ErrNoHandshake.
 func (l *Link) AwaitHandshake(ctx context.Context, c *Config, wait time.Duration) (err error) {
 	defer func() {
 		if err != nil {
@@ -267,7 +267,7 @@ func (l *Link) AwaitHandshake(ctx context.Context, c *Config, wait time.Duration
 	return setKeepalive(func(i int) time.Duration { return time.Duration(c.Peers[i].PersistentKeepalive) * time.Second })
 }
 
-// Down supprime les règles puis l'interface ; idempotent.
+// Down removes the rules then the interface; idempotent.
 func (l *Link) Down() error {
 	l.once.Do(func() {
 		delRules(l.fams)
@@ -293,7 +293,7 @@ func (l *Link) device() (*wgtypes.Device, error) {
 	return wc.Device(l.iface)
 }
 
-// Stats renvoie les octets reçus/émis cumulés (0,0 en cas d'erreur).
+// Stats returns the cumulative bytes received/sent (0,0 on error).
 func (l *Link) Stats() (rx, tx uint64) {
 	d, err := l.device()
 	if err != nil {
@@ -306,7 +306,7 @@ func (l *Link) Stats() (rx, tx uint64) {
 	return rx, tx
 }
 
-// LastHandshake renvoie le dernier handshake le plus récent (zéro si aucun).
+// LastHandshake returns the most recent handshake (zero if none).
 func (l *Link) LastHandshake() time.Time {
 	d, err := l.device()
 	if err != nil {

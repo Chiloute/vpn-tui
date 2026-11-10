@@ -1,8 +1,8 @@
-// Package wg analyse les profils WireGuard (format wg-quick restreint).
+// Package wg parses WireGuard profiles (restricted wg-quick format).
 //
-// Liste blanche stricte : aucun secret en clair n'est accepté. Le client
-// remplace PrivateKey/PresharedKey par la sentinelle "@keyring".
-// Choix DNS : les noms de domaine de recherche sont REFUSÉS (seules des IP).
+// Strict allowlist: no plaintext secret is accepted. The client
+// replaces PrivateKey/PresharedKey with the "@keyring" sentinel.
+// DNS choice: search domain names are REJECTED (IPs only).
 package wg
 
 import (
@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 )
 
-// MaxSize est la taille maximale acceptée d'un profil.
+// MaxSize is the maximum accepted size of a profile.
 const MaxSize = 16 * 1024
 
 const sentinel = "@keyring"
@@ -37,7 +37,7 @@ type Config struct {
 	Sanitized  []byte
 }
 
-// RejectError décrit un rejet de profil.
+// RejectError describes a profile rejection.
 type RejectError struct {
 	Line   int
 	Key    string

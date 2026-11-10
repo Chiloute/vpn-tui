@@ -12,7 +12,7 @@ import { buildForm, checkEdit, type Errors } from "./validate";
 
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Câblage commun création / édition : navigation, annulation confirmée si modifié, erreurs par champ et du daemon. */
+/** Shared create / edit wiring: navigation, confirmed cancel if modified, per-field and daemon errors. */
 function useFormView(o: { fields: Field[]; values: Values; set: (id: string, v: string) => void; submit: () => void; leave: () => void }) {
   const { bindings } = useTui();
   const nav = createFormNav(o.fields);
@@ -98,7 +98,7 @@ function CreateForm() {
 }
 
 type Ks = { enabled: boolean; allow_internet: boolean; block_ipv6: boolean };
-// Le daemon renvoie un objet ; le type TS de store/banner.ts annonce un booléen.
+// The daemon returns an object; the TS type in store/banner.ts declares a boolean.
 const ksOf = (p: Profile): Ks => {
   const k = p.killswitch as unknown;
   return typeof k === "object" && k ? (k as Ks) : { enabled: !!k, allow_internet: false, block_ipv6: false };

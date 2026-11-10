@@ -15,24 +15,24 @@ const registry = new Map<ViewId, Component>();
 const [currentView, setCurrentView] = createSignal<ViewId>("profiles");
 export { currentView, setCurrentView };
 
-/** Enregistre le composant d'une vue ; `id` est une clé de la table d'aide. */
+/** Registers a view's component; `id` is a key of the help table. */
 export function registerView(id: ViewId, component: Component): void {
   registry.set(id, component);
 }
 
-/** Vrai si la touche `key` doit aller au champ focalisé (saisie) plutôt qu'à la commande. */
+/** True if `key` should go to the focused field (typing) rather than to the command. */
 export function keyGoesToField(r: Renderable | null, key: string): boolean {
   if (!r) return false;
   const keys = key.split(",").map((k) => k.trim());
   const typing = r instanceof EditBufferRenderable || r.id.startsWith("mask-");
   if (typing && keys.some((k) => /^(shift\+)?.$/.test(k) || k === "space")) return true;
-  return r instanceof TextareaRenderable && !(r instanceof InputRenderable) && keys.includes("return"); // retour à la ligne
+  return r instanceof TextareaRenderable && !(r instanceof InputRenderable) && keys.includes("return"); // newline
 }
 
 /**
- * Enregistre via useBindings les commandes de la table qui ont un handler.
- * `target` : calque limité à ce renderable (ex. `usePane().target`) ; handlers reçoivent le nom de la touche pressée.
- * Les touches de saisie (lettres, ?, !…) sont suspendues tant qu'un champ de texte a le focus.
+ * Registers via useBindings the table commands that have a handler.
+ * `target`: layer limited to this renderable (e.g. `usePane().target`); handlers receive the pressed key name.
+ * Typing keys (letters, ?, !…) are suspended while a text field has focus.
  */
 export function bindCommands(
   cmds: ResolvedCommand[],
@@ -60,7 +60,7 @@ function HelpModal(props: { open: boolean; onDismiss: () => void; bindings: Reso
   let box: ScrollBoxRenderable | undefined;
   const bold = TextAttributes.BOLD;
   const v = () => views[currentView()];
-  // Hauteur utile du Modal : hauteur - 4 (marge) - 4 (bordure + padding)
+  // Usable Modal height: height - 4 (margin) - 4 (border + padding)
   const h = () => Math.max(1, dims().height - 8);
   const { bindings } = useTui();
   const own = bindings.help;
@@ -121,7 +121,7 @@ function Body() {
   const [helpOpen, setHelpOpen] = createSignal(false);
   const [panicOpen, setPanicOpen] = createSignal(false);
   const [root, setRoot] = createSignal<BoxRenderable>();
-  // Les commandes globales sont limitées à la racine : les modales (Portal) prennent le focus et les coupent.
+  // Global commands are limited to the root: modals (Portal) take focus and cut them off.
   bindCommands(bindings.profiles.filter((c) => c.scope === "global"), {
     "global.help": () => setHelpOpen((o) => !o),
     "global.quit": () => renderer.destroy(),

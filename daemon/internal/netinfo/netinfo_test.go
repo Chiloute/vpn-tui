@@ -1,5 +1,5 @@
-// Tests netlink réels : `unshare -Urn go test ./daemon/internal/netinfo/`
-// (skip sans CAP_NET_ADMIN).
+// Real netlink tests: `unshare -Urn go test ./daemon/internal/netinfo/`
+// (skipped without CAP_NET_ADMIN).
 package netinfo
 
 import (
@@ -22,8 +22,8 @@ func TestFilterRoutes(t *testing.T) {
 	a, _ := netlink.ParseAddr("10.0.0.2/24")
 	rs := []netlink.Route{
 		{Dst: ipn("10.0.0.0/24"), Protocol: unix.RTPROT_KERNEL, Family: unix.AF_INET}, // connected
-		{Dst: ipn("10.0.0.0/24"), Protocol: unix.RTPROT_BOOT, Family: unix.AF_INET},   // AllowedIP identique : gardée
-		{Dst: ipn("fe80::/64"), Protocol: unix.RTPROT_KERNEL, Family: unix.AF_INET6},  // lien local
+		{Dst: ipn("10.0.0.0/24"), Protocol: unix.RTPROT_BOOT, Family: unix.AF_INET},   // identical AllowedIP: kept
+		{Dst: ipn("fe80::/64"), Protocol: unix.RTPROT_KERNEL, Family: unix.AF_INET6},  // link-local
 		{Dst: ipn("192.168.1.0/24"), Family: unix.AF_INET},
 		{Dst: nil, Family: unix.AF_INET6},
 	}
@@ -43,7 +43,7 @@ func TestDummyLink(t *testing.T) {
 	la := netlink.NewLinkAttrs()
 	la.Name = "nitest0"
 	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: la}); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN : %v", err)
+		t.Skipf("no CAP_NET_ADMIN: %v", err)
 	}
 	l, _ := netlink.LinkByName("nitest0")
 	defer netlink.LinkDel(l)
@@ -56,7 +56,7 @@ func TestDummyLink(t *testing.T) {
 		t.Fatalf("IPv4 = %v, %v", ip, err)
 	}
 	rs, err := Routes("nitest0")
-	if err != nil || len(rs) != 0 { // seule la route connected : filtrée
+	if err != nil || len(rs) != 0 { // only the connected route: filtered
 		t.Fatalf("Routes = %v, %v", rs, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -64,16 +64,16 @@ func TestDummyLink(t *testing.T) {
 	gone := WatchGone(ctx, "nitest0")
 	select {
 	case <-gone:
-		t.Fatal("fermé trop tôt")
+		t.Fatal("closed too early")
 	case <-time.After(100 * time.Millisecond):
 	}
 	netlink.LinkDel(l)
 	select {
 	case <-gone:
 	case <-time.After(3 * time.Second):
-		t.Fatal("WatchGone ne s'est pas déclenché")
+		t.Fatal("WatchGone did not trigger")
 	}
 	if Exists("nitest0") {
-		t.Fatal("existe encore")
+		t.Fatal("still exists")
 	}
 }

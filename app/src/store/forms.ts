@@ -18,7 +18,7 @@ const line = (label: string, v: string) => {
 const list = (v: string | string[]) => (Array.isArray(v) ? v : [v]).map((x) => line("list", x)).join(", ");
 const block = (tag: string, v: string) => `<${tag}>\n${v.trim()}\n</${tag}>\n`;
 
-/** Produit le contenu .ovpn / .conf (secrets inclus, à passer ensuite par extractSecrets). */
+/** Produces the .ovpn / .conf content (secrets included, to be passed through extractSecrets afterwards). */
 export function buildContent(f: ProfileForm): { type: "openvpn" | "wireguard"; filename: string; content: string } {
   if ("remote" in f) {
     if (!Number.isInteger(f.port) || f.port < 1 || f.port > 65535) throw new Error("invalid port");
@@ -44,7 +44,7 @@ export function buildContent(f: ProfileForm): { type: "openvpn" | "wireguard"; f
   return { type: "wireguard", filename: "form.conf", content: c };
 }
 
-/** Valeurs sensibles d'un formulaire, pour les masquer dans les messages d'erreur. */
+/** Sensitive values of a form, to mask them in error messages. */
 export function formSecrets(f: ProfileForm): string[] {
   const v = "remote" in f ? [f.key, f.password, f.tlsCrypt, f.tlsAuth] : [f.privateKey, f.peer.presharedKey];
   return v.filter((x): x is string => !!x);

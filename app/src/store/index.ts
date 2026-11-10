@@ -52,7 +52,7 @@ function parseImport({ filename, content: raw, name, id }: ImportInput) {
   return { type, content, secrets, pname, pid, endpoint };
 }
 
-/** Aperçu local, rien n'est envoyé ; ne renvoie jamais de secret. */
+/** Local preview, nothing is sent; never returns a secret. */
 export function previewImport(input: ImportInput): { preview: ImportPreview } | { error: string } {
   try {
     const r = parseImport(input);
@@ -164,7 +164,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
       onOpen: () => {
         opened = true;
         set({ daemonReachable: true });
-        void refresh(); // rattrape ce qui a pu être manqué pendant la coupure
+        void refresh(); // catches up on anything missed during the cut
       },
       onError: () => {
         if (!opened) set({ daemonReachable: false });
@@ -183,7 +183,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
       return () => void listeners.delete(l);
     },
     refresh,
-    /** Refresh, historique 7 jours, puis abonnement (reconnecté automatiquement). */
+    /** Refresh, 7-day history, then subscription (reconnected automatically). */
     async start() {
       if (!stopped) return;
       stopped = false;
@@ -204,7 +204,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
     },
     toggle(id: string) {
       const active = state.status?.profile === id && state.status.state !== "disarmed";
-      // "reconnect" : bascule depuis un autre profil actif
+      // "reconnect": switch from another active profile
       const kind = active ? "down" : state.status?.state === "armed" ? "reconnect" : "up";
       return act(kind, async () => {
         if (active) await d.call("down", undefined, sock);

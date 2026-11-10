@@ -38,7 +38,7 @@ func TestPanicOffNetns(t *testing.T) {
 	la := netlink.NewLinkAttrs()
 	la.Name = "vpntui0"
 	if err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: la}); err != nil {
-		t.Skipf("pas de CAP_NET_ADMIN/wireguard : %v", err)
+		t.Skipf("no CAP_NET_ADMIN/wireguard: %v", err)
 	}
 	t.Cleanup(func() { nft.DeleteTable() })
 	o := testOpts(t)
@@ -56,18 +56,18 @@ func TestPanicOffNetns(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	if ok, _ := nft.TableExists(); ok || netinfo.Exists("vpntui0") {
-		t.Fatal("table ou interface encore là")
+		t.Fatal("table or interface still present")
 	}
 	for _, f := range []string{o.marker, filepath.Join(o.runDir, "state.json")} {
 		if _, err := os.Stat(f); err == nil {
-			t.Fatalf("%s encore là", f)
+			t.Fatalf("%s still present", f)
 		}
 	}
 	if b, _ := os.ReadFile(o.journal()); !strings.Contains(string(b), `"panic_off"`) {
-		t.Fatalf("journal : %s", b)
+		t.Fatalf("journal: %s", b)
 	}
 	if !strings.Contains(out.String(), "skip") {
-		t.Fatalf("pid non-openvpn non ignoré :\n%s", out.String())
+		t.Fatalf("non-openvpn pid not ignored:\n%s", out.String())
 	}
 	if err := panicOffCmd(o, &out); err != nil { // idempotent
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestExitNeverDisarms(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("serve ne rend pas la main")
+		t.Fatal("serve does not return")
 	}
 	if slices.Contains(fw.calls, "Disarm") || downs.Load() != 0 || m.Status().State != state.Armed {
 		t.Fatalf("calls=%v downs=%d state=%s", fw.calls, downs.Load(), m.Status().State)

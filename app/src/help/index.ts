@@ -16,7 +16,7 @@ export type ResolvedCommand = Cmd & { key: string; scope: "view" | "global" };
 
 const keysOf = (key: string) => key.split(",").map((k) => k.trim());
 
-/** Pour chaque vue : ses commandes puis les commandes globales, avec la touche effective. */
+/** For each view: its commands then the global commands, with the effective key. */
 export function resolveBindings(config: Pick<AppConfig, "keybinds">): Record<ViewId, ResolvedCommand[]> {
   const key = (c: Cmd) => (config.keybinds as Record<string, string>)[c.name] ?? c.defaultKey;
   const out = {} as Record<ViewId, ResolvedCommand[]>;

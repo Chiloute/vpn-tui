@@ -5,13 +5,13 @@ import schema from "../../../proto/rpc.schema.json" with { type: "json" };
 
 export const DEFAULT_SOCKET = "/run/vpn-tui/vpn-tuid.sock";
 
-/** Erreur JSON-RPC renvoyée par le daemon. */
+/** JSON-RPC error returned by the daemon. */
 export class RpcError extends Error {
   constructor(public code: number, message: string) {
     super(message);
   }
 }
-/** Daemon injoignable, timeout, ou message hors contrat. */
+/** Daemon unreachable, timeout, or out-of-contract message. */
 export class TransportError extends Error {}
 
 const ajv = new Ajv2020({ allErrors: false });
@@ -59,7 +59,7 @@ export async function call(
   return res.result;
 }
 
-/** Envoie une ligne, renvoie la première ligne reçue (max 64 KiB, cf. contrat). */
+/** Sends a line, returns the first line received (max 64 KiB, see contract). */
 function exchange(path: string, data: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let buf = "";
@@ -80,7 +80,7 @@ function exchange(path: string, data: string, timeoutMs: number): Promise<string
         resolve(buf.slice(0, nl));
       } else if (buf.length > 65536) fail("response too large");
     });
-    sock.on("close", () => fail("connection closed without a response")); // no-op si déjà réglé
+    sock.on("close", () => fail("connection closed without a response")); // no-op if already settled
   });
 }
 
@@ -88,12 +88,12 @@ const validateNotification = validator("event_notification");
 export type RpcEvent = { time: string; profile: string | null; state: string; kind: string; detail: string };
 export type SubscribeOpts = {
   socket?: string;
-  onOpen?: () => void; // ack {ok:true} reçu
-  onError?: (e: Error) => void; // transport, ack refusé ou notification invalide (ignorée)
-  onClose?: () => void; // appelé une seule fois, quelle qu'en soit la cause
+  onOpen?: () => void; // ack {ok:true} received
+  onError?: (e: Error) => void; // transport, rejected ack or invalid notification (ignored)
+  onClose?: () => void; // called once, whatever the cause
 };
 
-/** events_subscribe : ack puis une notification `event` par ligne, sur la même connexion, sans timeout de lecture. */
+/** events_subscribe: ack then one `event` notification per line, on the same connection, no read timeout. */
 export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = {}): { close(): void } {
   const path = opts.socket ?? process.env.VPN_TUI_SOCKET ?? DEFAULT_SOCKET;
   const req = { jsonrpc: "2.0", id: nextId++, method: "events_subscribe" };
@@ -122,7 +122,7 @@ export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = 
     if (!acked) {
       if (!validateResponse(msg) || msg.id !== req.id) return fatal("invalid subscription response");
       if (msg.error) return fatal(`subscription refused (${msg.error.code}): ${msg.error.message}`);
-      if (!validator("result_events_subscribe")(msg.result)) return fatal("ack d'abonnement invalide");
+      if (!validator("result_events_subscribe")(msg.result)) return fatal("invalid subscription ack");
       acked = true;
       return opts.onOpen?.();
     }
@@ -138,10 +138,10 @@ export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = 
     while (!closed && (nl = buf.indexOf("\n")) >= 0) {
       const l = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
-      if (l.length > 65536) return fatal("ligne trop grande");
+      if (l.length > 65536) return fatal("line too large");
       line(l);
     }
-    if (!closed && buf.length > 65536) fatal("ligne trop grande");
+    if (!closed && buf.length > 65536) fatal("line too large");
   });
   sock.on("close", shutdown);
   return { close: shutdown };

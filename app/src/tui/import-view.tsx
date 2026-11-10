@@ -15,7 +15,7 @@ import { bindCommands, setCurrentView } from "./shell";
 const MAX_BYTES = 1_000_000;
 export const expandHome = (p: string) => (p === "~" || p.startsWith("~/") ? homedir() + p.slice(1) : p);
 
-/** Complète `input` avec les noms du dossier correspondant (préfixe commun) ; renvoie `input` s'il n'y a rien à compléter. */
+/** Completes `input` with the matching directory's names (common prefix); returns `input` if there is nothing to complete. */
 export function completePath(input: string): string {
   const full = expandHome(input);
   const dir = full.endsWith("/") ? full : dirname(full);
@@ -32,7 +32,7 @@ export function completePath(input: string): string {
   const out = join(dir, common);
   const prefix = input.startsWith("~") ? "~" + out.slice(homedir().length) : input.startsWith("./") ? "./" + out : out;
   let isDir = false;
-  try { isDir = names.length === 1 && statSync(out).isDirectory(); } catch { /* ignoré */ }
+  try { isDir = names.length === 1 && statSync(out).isDirectory(); } catch { /* ignored */ }
   return prefix + (isDir ? "/" : "");
 }
 
@@ -45,7 +45,7 @@ export function ImportView() {
 
   const set = (id: string, v: string) => {
     setValues(id, v);
-    if (id === "path") setPreview(null); // l'aperçu ne vaut que pour le fichier lu
+    if (id === "path") setPreview(null); // the preview only applies to the file read
   };
   const has = () => preview() !== null;
   const fields: Field[] = [

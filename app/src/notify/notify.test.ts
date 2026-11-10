@@ -51,7 +51,7 @@ const ev = (kind: string, detail = "") => ({ jsonrpc: "2.0", method: "event", pa
 const push = (e: unknown) => subConn.write(JSON.stringify(e) + "\n");
 const args = () => (existsSync(out) ? readFileSync(out, "utf8").split("\n").filter(Boolean) : []);
 
-test("drop -> critical, up -> normal, args propres, LHOST écrit", async () => {
+test("drop -> critical, up -> normal, clean args, LHOST written", async () => {
   const ac = new AbortController();
   const loop = notifyLoop({ socket: sock, notifySend: fake, signal: ac.signal });
   await until(() => subs === 1);
@@ -68,7 +68,7 @@ test("drop -> critical, up -> normal, args propres, LHOST écrit", async () => {
   await loop;
 });
 
-test("fermeture du daemon -> réabonnement", async () => {
+test("daemon close -> resubscribe", async () => {
   const ac = new AbortController();
   const sleeps: number[] = [];
   const loop = notifyLoop({ socket: sock, notifySend: fake, signal: ac.signal, sleep: async (ms) => void sleeps.push(ms) });
@@ -80,7 +80,7 @@ test("fermeture du daemon -> réabonnement", async () => {
   await loop;
 });
 
-test("notify-send absent -> un seul avertissement", async () => {
+test("notify-send absent -> a single warning", async () => {
   const ac = new AbortController();
   const warns: string[] = [];
   const loop = notifyLoop({ socket: sock, notifySend: join(dir, "nope"), signal: ac.signal, warn: (s) => warns.push(s) });
@@ -94,7 +94,7 @@ test("notify-send absent -> un seul avertissement", async () => {
   await loop;
 });
 
-test("clean : contrôle retirés, 200 max", () => {
+test("clean: control chars removed, 200 max", () => {
   expect(clean("a\nb\x00c")).toBe("a b c");
   expect([...clean("é".repeat(300))].length).toBe(200);
 });

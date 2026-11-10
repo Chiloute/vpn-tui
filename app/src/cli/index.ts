@@ -50,7 +50,7 @@ export type IO = {
 
 const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
-/** Durée (30m, 24h, 7d) ou date RFC 3339 -> RFC 3339 ; null si invalide. */
+/** Duration (30m, 24h, 7d) or RFC 3339 date -> RFC 3339; null if invalid. */
 function parseSince(v: string, now = Date.now()): string | null {
   const m = /^(\d+)([mhd])$/.exec(v);
   if (m) return new Date(now - Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS]).toISOString();
