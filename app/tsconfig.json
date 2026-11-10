@@ -5,10 +5,13 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "strict": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid",
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

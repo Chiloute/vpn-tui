@@ -5,6 +5,7 @@ import { call, RpcError, TransportError } from "../rpc/client";
 import { detectType, extractSecrets, slugify } from "../import";
 import { deleteSecrets, loadSecrets, storeSecrets } from "../keyring";
 import { writeLhost } from "../lhost";
+import { notifyCmd } from "../notify";
 
 const USAGE = `Usage : vpn-tui status [--json]
         vpn-tui import <fichier> [--name NOM] [--id ID]
@@ -14,6 +15,7 @@ const USAGE = `Usage : vpn-tui status [--json]
         vpn-tui lhost
         vpn-tui logs [--since 24h|7d|30m|DATE_RFC3339] [--json]
         vpn-tui panic-off [--yes]
+        vpn-tui notify   (s'abonne aux événements, envoie des notifications via notify-send, met à jour LHOST)
         vpn-tui --help`;
 
 type Status = {
@@ -288,6 +290,7 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
       return rpcFailure(e, io);
     }
   }
+  if (cmd === "notify" && rest.length === 0) return notifyCmd(socket);
   if (cmd === "logs" && rest.length === 0) return logsCmd(values.since ?? "24h", !!values.json, io, socket);
   if (cmd === "panic-off" && rest.length === 0) return panicOffCmd(!!values.yes, io, socket);
   if (cmd === "lhost" && rest.length === 0) {
