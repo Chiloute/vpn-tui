@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
@@ -316,4 +317,56 @@ func TestStopKillsStubborn(t *testing.T) {
 		t.Error("processus non terminé")
 	}
 	assertClean(t, o.RunDir)
+}
+
+func TestAdopt(t *testing.T) {
+	if _, err := Adopt(os.Getpid(), "lo", t.TempDir()); err == nil {
+		t.Fatal("adoption d'un processus non-openvpn acceptée")
+	}
+	if _, err := Adopt(0, "lo", t.TempDir()); err == nil {
+		t.Fatal("pid 0 accepté")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "openvpn") // comm = nom du binaire
+	if err := os.WriteFile(fake, []byte("#!"+sh+"\nwhile :; do sleep 1; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(fake)
+	if err := cmd.Start(); err != nil {
+		t.Skipf("binaire copié inexécutable : %v", err)
+	}
+	go cmd.Wait() // reap
+	defer cmd.Process.Kill()
+	os.WriteFile(filepath.Join(dir, "ovpn-x.conf"), nil, 0o600)
+	oldPoll := adoptPoll
+	adoptPoll = 20 * time.Millisecond
+	defer func() { adoptPoll = oldPoll }()
+
+	p, err := Adopt(cmd.Process.Pid, "lo", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Pid() != cmd.Process.Pid {
+		t.Fatal("pid")
+	}
+	select {
+	case <-p.Dead():
+		t.Fatal("mort trop tôt")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Dead():
+	case <-time.After(time.Second):
+		t.Fatal("Dead non déclenché")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ovpn-x.conf")); err == nil {
+		t.Fatal("fichier de RunDir non nettoyé")
+	}
 }

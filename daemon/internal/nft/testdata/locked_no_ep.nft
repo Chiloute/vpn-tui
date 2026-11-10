@@ -1,0 +1,11 @@
+table inet vpn_tui {
+	chain output {
+		type filter hook output priority filter - 10; policy accept;
+		oifname "lo" accept
+		drop
+	}
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		drop
+	}
+}

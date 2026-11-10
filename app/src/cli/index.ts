@@ -12,6 +12,8 @@ const USAGE = `Usage : vpn-tui status [--json]
         vpn-tui up <id>
         vpn-tui down
         vpn-tui lhost
+        vpn-tui logs [--since 24h|7d|30m|DATE_RFC3339] [--json]
+        vpn-tui panic-off [--yes]
         vpn-tui --help`;
 
 type Status = {
@@ -37,7 +39,81 @@ export function formatStatus(s: Status): string {
 
 const EXIT = { armed: 0, disarmed: 1, locked: 2, reconnecting: 2 } as const;
 
-export type IO = { out: (s: string) => void; err: (s: string) => void };
+export type IO = {
+  out: (s: string) => void;
+  err: (s: string) => void;
+  ask?: (q: string) => Promise<string>;
+  isTTY?: boolean;
+};
+
+const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
+/** Durée (30m, 24h, 7d) ou date RFC 3339 -> RFC 3339 ; null si invalide. */
+function parseSince(v: string, now = Date.now()): string | null {
+  const m = /^(\d+)([mhd])$/.exec(v);
+  if (m) return new Date(now - Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS]).toISOString();
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/i.test(v)) return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+type Ev = { time: string; profile: string | null; state: string; kind: string; detail: string };
+
+const pad = (n: number) => String(n).padStart(2, "0");
+function formatEvent(e: Ev): string {
+  const d = new Date(e.time);
+  const t = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${t}  ${e.profile ?? "-"}  ${e.state}  ${e.kind}  ${e.detail}`.trimEnd();
+}
+
+async function logsCmd(since: string, json: boolean, io: IO, socket?: string): Promise<number> {
+  const iso = parseSince(since);
+  if (!iso) {
+    io.err(`Durée invalide : ${since} (attendu : 30m, 24h, 7d ou date RFC 3339)`);
+    return 1;
+  }
+  try {
+    const { events } = (await call("logs", { since: iso }, { socket })) as unknown as { events: Ev[] };
+    io.out(events.length === 0 ? "Aucun événement" : events.map((e) => (json ? JSON.stringify(e) : formatEvent(e))).join("\n"));
+    return 0;
+  } catch (e) {
+    return rpcFailure(e, io);
+  }
+}
+
+async function defaultAsk(q: string): Promise<string> {
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(q);
+  } finally {
+    rl.close();
+  }
+}
+
+async function panicOffCmd(yes: boolean, io: IO, socket?: string): Promise<number> {
+  if (!yes) {
+    if (!(io.isTTY ?? process.stdin.isTTY)) {
+      io.err("panic-off : confirmation impossible, utilisez --yes en non interactif");
+      return 1;
+    }
+    const a = await (io.ask ?? defaultAsk)("Supprimer le kill switch et couper le tunnel ? Tapez « oui » : ");
+    if (a !== "oui") {
+      io.err("Annulé");
+      return 1;
+    }
+  }
+  try {
+    await call("panic_off", undefined, { socket });
+    const s = await getStatus(io, socket);
+    io.out(`Kill switch supprimé et tunnel coupé.\n${formatStatus(s)}`);
+    return 0;
+  } catch (e) {
+    const code = rpcFailure(e, io);
+    io.err("en dernier recours (root) : vpn-tuid --panic-off, ou nft delete table inet vpn_tui");
+    return code;
+  }
+}
 
 function rpcFailure(e: unknown, io: IO): number {
   if (e instanceof RpcError) {
@@ -162,6 +238,8 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
         help: { type: "boolean", short: "h" },
         name: { type: "string" },
         id: { type: "string" },
+        since: { type: "string" },
+        yes: { type: "boolean" },
       },
     });
   } catch (e) {
@@ -210,6 +288,8 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
       return rpcFailure(e, io);
     }
   }
+  if (cmd === "logs" && rest.length === 0) return logsCmd(values.since ?? "24h", !!values.json, io, socket);
+  if (cmd === "panic-off" && rest.length === 0) return panicOffCmd(!!values.yes, io, socket);
   if (cmd === "lhost" && rest.length === 0) {
     try {
       const s = await getStatus(io, socket);

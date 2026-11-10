@@ -47,6 +47,7 @@ func TestSchema(t *testing.T) {
 		{"secrets elsewhere", "request", `{"jsonrpc":"2.0","id":3,"method":"profile_delete","params":{"id":"a","secrets":{}}}`, false},
 		{"event", "event_notification", `{"jsonrpc":"2.0","method":"event","params":{"time":"2026-01-02T03:04:05Z","profile":null,"state":"armed","kind":"up","detail":""}}`, true},
 		{"error", "response", `{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"nf"}}`, true},
+		{"connect_failed", "response", `{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"x"}}`, true},
 		{"color base0D", "color", `"base0D"`, true},
 		{"color hex", "color", `"#ff0000"`, false},
 		{"color base10", "color", `"base10"`, false},

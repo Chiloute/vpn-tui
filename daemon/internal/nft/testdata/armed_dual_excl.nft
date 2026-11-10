@@ -1,0 +1,16 @@
+table inet vpn_tui {
+	chain output {
+		type filter hook output priority filter - 10; policy accept;
+		oifname "lo" accept
+		oifname "tun0" accept
+		ip daddr 203.0.113.7 udp dport 51820 accept
+		ip daddr { 10.10.0.0/16, 172.16.0.0/12 } ip daddr != { 10.10.5.0/24 } drop
+		ip6 daddr { fd00:10::/32 } ip6 daddr != { fd00:10:1::/48 } drop
+	}
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		oifname "tun0" accept
+		ip daddr { 10.10.0.0/16, 172.16.0.0/12 } ip daddr != { 10.10.5.0/24 } drop
+		ip6 daddr { fd00:10::/32 } ip6 daddr != { fd00:10:1::/48 } drop
+	}
+}
