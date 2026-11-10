@@ -13,11 +13,12 @@ pkgs.mkShell {
     nmap
     libsecret
     socat
+    shellcheck
   ];
 
   shellHook = ''
-    echo "vpn-tui — shell de développement"
-    echo "  go test ./...        # tests du daemon"
-    echo "  cd app && bun test   # tests du TUI/CLI"
+    echo "vpn-tui — development shell"
+    echo "  go test ./...        # daemon tests"
+    echo "  cd app && bun test   # TUI/CLI tests"
   '';
 }
