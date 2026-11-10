@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// TestMain : le binaire de test sert de faux openvpn quand OVPN_FAKE est défini.
+// TestMain: the test binary acts as a fake openvpn when OVPN_FAKE is set.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("OVPN_FAKE"); mode != "" {
 		fakeOpenVPN(mode)
@@ -47,7 +47,7 @@ func fakeOpenVPN(mode string) {
 		if err != nil || st.Mode().Perm() != 0o600 || string(b) != "alice\nS3cretPw\n" {
 			os.Exit(3)
 		}
-		fmt.Fprintf(os.Stderr, "fake: auth %q\n", b) // doit être masqué par le logger
+		fmt.Fprintf(os.Stderr, "fake: auth %q\n", b) // must be masked by the logger
 	}
 	fmt.Fprintln(os.Stderr, "fake: started")
 	os.Remove(arg("--management"))
@@ -119,7 +119,7 @@ func assertClean(t *testing.T, dir string) {
 	t.Helper()
 	left, _ := filepath.Glob(filepath.Join(dir, "*"))
 	if len(left) != 0 {
-		t.Errorf("fichiers résiduels : %v", left)
+		t.Errorf("leftover files: %v", left)
 	}
 }
 
@@ -138,7 +138,7 @@ func TestRedact(t *testing.T) {
 		}
 	}
 	if got := redact("anything", "", ""); got != "anything" {
-		t.Errorf("secrets vides : %q", got)
+		t.Errorf("empty secrets: %q", got)
 	}
 }
 
@@ -146,23 +146,23 @@ func TestBuildArgs(t *testing.T) {
 	o := StartOpts{Iface: "vpntui0", Username: "u", Password: "p", User: "nobody", Group: "nogroup"}
 	a := buildArgs(o, "/r/c.conf", "/r/s.sock", "/r/auth-x")
 	if a[0] != "--config" || a[1] != "/r/c.conf" {
-		t.Fatalf("--config doit venir en premier : %v", a)
+		t.Fatalf("--config must come first: %v", a)
 	}
 	j := strings.Join(a, " ")
 	for _, w := range []string{"--dev vpntui0", "--dev-type tun", "--script-security 1", "--management /r/s.sock unix",
 		"--management-hold", "--auth-user-pass /r/auth-x", "--auth-nocache", "--auth-retry none", "--user nobody", "--group nogroup"} {
 		if !strings.Contains(j, w) {
-			t.Errorf("manque %q dans %s", w, j)
+			t.Errorf("missing %q in %s", w, j)
 		}
 	}
 	for _, bad := range []string{"--up", "--down", "--route-up", "--plugin", "--tls-verify", "--script-security 2", " p ", " u "} {
 		if strings.Contains(j+" ", bad+" ") && bad != "--script-security 2" || strings.Contains(j, "--script-security 2") {
-			t.Errorf("présent à tort : %q", bad)
+			t.Errorf("wrongly present: %q", bad)
 		}
 	}
 	a = buildArgs(StartOpts{Iface: "x"}, "c", "s", "a")
 	if j := strings.Join(a, " "); strings.Contains(j, "--auth-user-pass") || strings.Contains(j, "--user") {
-		t.Errorf("options optionnelles présentes : %s", j)
+		t.Errorf("optional options present: %s", j)
 	}
 }
 
@@ -173,12 +173,12 @@ func TestRuntimeConf(t *testing.T) {
 		{netip.MustParseAddr("203.0.113.1"), 1194, "udp"}, {netip.MustParseAddr("2001:db8::1"), 443, "tcp"}}))
 	for _, bad := range []string{"example.com", "remote-random", "dev tun", "dev-type"} {
 		if strings.Contains(got, bad) {
-			t.Errorf("%q devrait être retiré :\n%s", bad, got)
+			t.Errorf("%q should be removed:\n%s", bad, got)
 		}
 	}
 	for _, w := range []string{"client\n", "verb 3\n", "remote 203.0.113.1 1194 udp\n", "remote 2001:db8::1 443 tcp\n", "-----\ndev\nremote\n-----END"} {
 		if !strings.Contains(got, w) {
-			t.Errorf("manque %q :\n%s", w, got)
+			t.Errorf("missing %q:\n%s", w, got)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func TestResolve(t *testing.T) {
 		t.Fatalf("got %v err=%v", got, err)
 	}
 	if _, err := Resolve(context.Background(), &Config{}); err == nil {
-		t.Error("erreur attendue sans remote")
+		t.Error("error expected without remote")
 	}
 }
 
@@ -210,11 +210,11 @@ func TestStartStopOK(t *testing.T) {
 		t.Errorf("ip=%v iface=%s", p.LocalIP(), p.Iface())
 	}
 	if _, err := os.Stat(filepath.Join(o.RunDir, "auth-p1")); !os.IsNotExist(err) {
-		t.Errorf("fichier auth doit avoir disparu : %v", err)
+		t.Errorf("auth file must be gone: %v", err)
 	}
 	st, err := os.Stat(filepath.Join(o.RunDir, "ovpn-p1.conf"))
 	if err != nil || st.Mode().Perm() != 0o600 {
-		t.Errorf("conf d'exécution : %v %v", st, err)
+		t.Errorf("runtime conf: %v %v", st, err)
 	}
 	conf, _ := os.ReadFile(filepath.Join(o.RunDir, "ovpn-p1.conf"))
 	if string(conf) != "client\nremote 203.0.113.1 1194 udp\n" {
@@ -225,11 +225,11 @@ func TestStartStopOK(t *testing.T) {
 		seen = append(seen, <-p.States())
 	}
 	if len(seen) == 0 || seen[len(seen)-1] != "CONNECTED" {
-		t.Errorf("états : %v", seen)
+		t.Errorf("states: %v", seen)
 	}
 	select {
 	case <-p.Dead():
-		t.Error("Dead ne devrait pas être fermé")
+		t.Error("Dead should not be closed")
 	default:
 	}
 	if err := p.Stop(); err != nil {
@@ -242,15 +242,15 @@ func TestStartStopOK(t *testing.T) {
 	select {
 	case <-p.exited:
 	default:
-		t.Error("processus non terminé")
+		t.Error("process not terminated")
 	}
 	assertClean(t, o.RunDir)
 	out := logs.String()
 	if strings.Contains(out, "S3cretPw") || strings.Contains(out, "alice") {
-		t.Errorf("secret dans les logs : %s", out)
+		t.Errorf("secret in logs: %s", out)
 	}
 	if !strings.Contains(out, "[redacted]") || !strings.Contains(out, "fake: started") {
-		t.Errorf("logs inattendus : %s", out)
+		t.Errorf("unexpected logs : %s", out)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestStartNoAuthFile(t *testing.T) {
 	}
 	defer p.Stop()
 	if _, err := os.Stat(filepath.Join(o.RunDir, "auth-p1")); !os.IsNotExist(err) {
-		t.Errorf("auth-p1 ne doit pas exister : %v", err)
+		t.Errorf("auth-p1 must not exist: %v", err)
 	}
 }
 
@@ -295,7 +295,7 @@ func TestDeadOnReconnecting(t *testing.T) {
 	select {
 	case <-p.Dead():
 	case <-time.After(3 * time.Second):
-		t.Fatal("Dead non fermé sur RECONNECTING")
+		t.Fatal("Dead not closed on RECONNECTING")
 	}
 }
 
@@ -314,30 +314,30 @@ func TestStopKillsStubborn(t *testing.T) {
 	select {
 	case <-p.exited:
 	default:
-		t.Error("processus non terminé")
+		t.Error("process not terminated")
 	}
 	assertClean(t, o.RunDir)
 }
 
 func TestAdopt(t *testing.T) {
 	if _, err := Adopt(os.Getpid(), "lo", t.TempDir()); err == nil {
-		t.Fatal("adoption d'un processus non-openvpn acceptée")
+		t.Fatal("adoption of a non-openvpn process accepted")
 	}
 	if _, err := Adopt(0, "lo", t.TempDir()); err == nil {
-		t.Fatal("pid 0 accepté")
+		t.Fatal("pid 0 accepted")
 	}
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip(err)
 	}
 	dir := t.TempDir()
-	fake := filepath.Join(dir, "openvpn") // comm = nom du binaire
+	fake := filepath.Join(dir, "openvpn") // comm = binary name
 	if err := os.WriteFile(fake, []byte("#!"+sh+"\nwhile :; do sleep 1; done\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(fake)
 	if err := cmd.Start(); err != nil {
-		t.Skipf("binaire copié inexécutable : %v", err)
+		t.Skipf("copied binary not executable: %v", err)
 	}
 	go cmd.Wait() // reap
 	defer cmd.Process.Kill()
@@ -355,7 +355,7 @@ func TestAdopt(t *testing.T) {
 	}
 	select {
 	case <-p.Dead():
-		t.Fatal("mort trop tôt")
+		t.Fatal("died too early")
 	case <-time.After(100 * time.Millisecond):
 	}
 	if err := p.Stop(); err != nil {
@@ -364,9 +364,9 @@ func TestAdopt(t *testing.T) {
 	select {
 	case <-p.Dead():
 	case <-time.After(time.Second):
-		t.Fatal("Dead non déclenché")
+		t.Fatal("Dead not triggered")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "ovpn-x.conf")); err == nil {
-		t.Fatal("fichier de RunDir non nettoyé")
+		t.Fatal("RunDir file not cleaned up")
 	}
 }

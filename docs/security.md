@@ -80,6 +80,10 @@ The parsers live in `daemon/internal/ovpn/parse.go` and `daemon/internal/wg/pars
 | `verify-x509-name` | a safe token, optional type `name`, `name-prefix` or `subject` |
 | `cipher`, `auth` | a safe token, not `none` |
 | `data-ciphers`, `data-ciphers-fallback`, `tls-cipher`, `tls-version-min` | safe tokens |
+| `tls-client` | none |
+| `keepalive <interval> <timeout>` | 2 integers, 1 to 3600 for the interval, timeout greater than the interval and at most 7200 |
+| `reneg-sec <max> [<min>]` | 1 or 2 integers, each 0 to 604800 |
+| `mssfix [<n>]` | none, `0` (disabled), or one integer from 576 to 9000 (the `mtu` keyword is not accepted) |
 | `explicit-exit-notify`, `verb`, `mute`, `ping`, `ping-restart`, `connect-timeout`, `server-poll-timeout`, `connect-retry` | integers |
 | `redirect-gateway` | `local`, `autolocal`, `def1`, `bypass-dhcp`, `bypass-dns`, `block-local`, `ipv6`, `!ipv4` |
 | `route` | 1 to 4 arguments: IP, integer, `vpn_gateway`, `net_gateway`, `remote_host` or `default` |
@@ -104,7 +108,7 @@ The parsers live in `daemon/internal/ovpn/parse.go` and `daemon/internal/wg/pars
 | `cipher none`, `auth none` | would send traffic in clear |
 | any other directive | not in the allowlist |
 
-The last row is a usability limit: common directives such as `keepalive`, `tls-client`, `reneg-sec` and `mssfix` are refused.
+The last row is a usability limit: directives that are not listed above are refused, even common ones.
 
 At launch, the daemon writes a runtime configuration from the stored one. It removes `remote`, `remote-random`, `dev` and `dev-type`, and adds the IPs it resolved itself (`remote <ip> <port> <proto>`). It starts OpenVPN with an argument array (no shell), with `--script-security 1`, `--dev vpntui0 --dev-type tun`, its own management socket, `--auth-nocache`, `--auth-retry none`, and `--user`/`--group` set to `nobody`/`nogroup` by default (the NixOS module empties them, see [systemd hardening](#systemd-hardening)). Only `PATH` is passed in the environment.
 

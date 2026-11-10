@@ -24,14 +24,14 @@ import (
 
 var stopGrace = 5 * time.Second
 
-// Resolved est une adresse de serveur déjà résolue.
+// Resolved is an already-resolved server address.
 type Resolved struct {
 	IP    netip.Addr
 	Port  int
 	Proto string
 }
 
-// Resolve résout chaque remote (IPv4 et IPv6) et dédoublonne.
+// Resolve resolves each remote (IPv4 and IPv6) and deduplicates.
 func Resolve(ctx context.Context, c *Config) ([]Resolved, error) {
 	var out []Resolved
 	seen := map[Resolved]bool{}
@@ -58,20 +58,20 @@ func Resolve(ctx context.Context, c *Config) ([]Resolved, error) {
 	return out, nil
 }
 
-// StartOpts décrit le lancement d'OpenVPN.
+// StartOpts describes the OpenVPN launch.
 type StartOpts struct {
-	Bin                string // exec.LookPath("openvpn") si vide
-	RunDir             string // ex. /run/vpn-tui (0700)
-	ID                 string // id de profil déjà validé
+	Bin                string // exec.LookPath("openvpn") if empty
+	RunDir             string // e.g. /run/vpn-tui (0700)
+	ID                 string // already-validated profile id
 	Iface              string
 	Config             *Config
-	Remotes            []Resolved // seules ces IP sont écrites dans la config d'exécution
-	Username, Password string     // vides si pas d'auth-user-pass
-	User, Group        string     // vides = pas de drop de privilèges
+	Remotes            []Resolved // only these IPs are written to the runtime config
+	Username, Password string     // empty if no auth-user-pass
+	User, Group        string     // empty = no privilege drop
 	ConnectTimeout     time.Duration
 }
 
-// Process est un OpenVPN en cours d'exécution.
+// Process is a running OpenVPN.
 type Process struct {
 	o                   StartOpts
 	conf, auth, sock    string
@@ -117,7 +117,7 @@ func (p *Process) fail(err error) {
 	p.markDead()
 }
 
-// runtimeConf retire remote/remote-random/dev/dev-type (hors blocs) et ajoute les IP résolues.
+// runtimeConf removes remote/remote-random/dev/dev-type (outside blocks) and adds the resolved IPs.
 func runtimeConf(san []byte, rs []Resolved) []byte {
 	var out bytes.Buffer
 	block := ""
@@ -146,7 +146,7 @@ func runtimeConf(san []byte, rs []Resolved) []byte {
 	return out.Bytes()
 }
 
-// buildArgs : jamais de shell ; les options du daemon suivent --config pour l'emporter.
+// buildArgs: never a shell; the daemon's options follow --config so they take precedence.
 func buildArgs(o StartOpts, conf, sock, auth string) []string {
 	a := []string{"--config", conf, "--dev", o.Iface, "--dev-type", "tun", "--script-security", "1",
 		"--management", sock, "unix", "--management-hold", "--management-query-passwords"}
@@ -163,7 +163,7 @@ func buildArgs(o StartOpts, conf, sock, auth string) []string {
 	return a
 }
 
-// redact masque les secrets d'une ligne de log d'OpenVPN.
+// redact masks the secrets in an OpenVPN log line.
 func redact(line, user, pass string) string {
 	for _, s := range []string{user, pass} {
 		if s != "" && strings.Contains(line, s) {
@@ -186,7 +186,7 @@ func redact(line, user, pass string) string {
 }
 
 func writeNew(path string, data []byte) error {
-	os.Remove(path) // résidu éventuel ; O_EXCL empêche de suivre un lien
+	os.Remove(path) // possible leftover; O_EXCL prevents following a link
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
@@ -204,7 +204,7 @@ func (p *Process) logLines(r io.Reader) {
 	for sc.Scan() {
 		slog.Info("openvpn", "line", redact(sc.Text(), p.o.Username, p.o.Password))
 	}
-	io.Copy(io.Discard, r) // ne jamais bloquer OpenVPN sur un pipe plein
+	io.Copy(io.Discard, r) // never block OpenVPN on a full pipe
 }
 
 func (p *Process) consume() {
@@ -248,7 +248,7 @@ func (p *Process) deadErr() error {
 	}
 }
 
-// Start lance OpenVPN et bloque jusqu'à CONNECTED ; en cas d'échec tout est nettoyé.
+// Start launches OpenVPN and blocks until CONNECTED; on failure everything is cleaned up.
 // testEnv lets tests reach the fake openvpn; always empty in the daemon.
 var testEnv []string
 
@@ -295,7 +295,7 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 	os.Remove(p.sock)
 
 	cmd := exec.Command(o.Bin, buildArgs(o, p.conf, p.sock, p.auth)...)
-	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, testEnv...) // rien d'autre ne fuit vers OpenVPN
+	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, testEnv...) // nothing else leaks to OpenVPN
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	if err = cmd.Start(); err != nil {
@@ -344,7 +344,7 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 	case <-p.connected:
 		return p, nil
 	case <-p.dead:
-		select { // laisse consume() lire une éventuelle cause (>PASSWORD, >FATAL)
+		select { // let consume() read a possible cause (>PASSWORD, >FATAL)
 		case <-p.consumed:
 		case <-time.After(time.Second):
 		}
@@ -370,7 +370,7 @@ func (p *Process) waitExit(d time.Duration) bool {
 	}
 }
 
-// Stop arrête OpenVPN (management, puis SIGTERM, puis SIGKILL), attend sa fin et nettoie. Idempotent.
+// Stop stops OpenVPN (management, then SIGTERM, then SIGKILL), waits for it to exit and cleans up. Idempotent.
 func (p *Process) Stop() error {
 	p.stopOnce.Do(func() {
 		defer func() {

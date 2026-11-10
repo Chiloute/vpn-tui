@@ -1,10 +1,10 @@
-// Package ovpn parse les configurations OpenVPN importées avec une liste
-// blanche stricte. Le résultat est exécuté par OpenVPN en root : toute
-// directive inconnue est refusée.
+// Package ovpn parses imported OpenVPN configurations against a strict
+// allowlist. OpenVPN runs the result as root: any unknown directive is
+// rejected.
 //
-// Choix : une directive préfixée de "--" est refusée (pas de normalisation).
-// La sensibilité à la casse est celle d'OpenVPN. Les commentaires (# ou ;)
-// ne sont reconnus qu'en début de ligne, comme dans OpenVPN.
+// Design choices: a directive prefixed with "--" is rejected (no
+// normalisation). Case sensitivity is the same as OpenVPN's. Comments (# or ;)
+// are only recognised at the start of a line, as in OpenVPN.
 package ovpn
 
 import (
@@ -16,23 +16,23 @@ import (
 	"unicode/utf8"
 )
 
-// MaxSize est la taille maximale acceptée d'un fichier .ovpn.
+// MaxSize is the maximum accepted size of an .ovpn file.
 const MaxSize = 48 * 1024
 
-// Remote est un serveur extrait d'une directive remote.
+// Remote is a server extracted from a remote directive.
 type Remote struct {
 	Host  string
 	Port  int
-	Proto string // "udp" ou "tcp"
+	Proto string // "udp" or "tcp"
 }
 
-// Config est le résultat d'un Parse réussi.
+// Config is the result of a successful Parse.
 type Config struct {
 	Remotes   []Remote
 	Sanitized []byte
 }
 
-// RejectError décrit le refus d'une config.
+// RejectError describes why a config was rejected.
 type RejectError struct {
 	Line      int
 	Directive string
@@ -89,8 +89,8 @@ var dangerousPrefix = map[string]string{
 	"pkcs11-":    "is forbidden (loads an external library)",
 }
 
-// kinds de validation d'arguments.
-type argSpec func(args []string) string // renvoie "" si OK, sinon le détail
+// argSpec validates the arguments of a directive.
+type argSpec func(args []string) string // returns "" if OK, otherwise the reason
 
 var (
 	none    = func(a []string) string { return exact(a, 0) }
@@ -146,6 +146,10 @@ var allowed = map[string]argSpec{
 		return names(a, 1, 2)
 	},
 	"explicit-exit-notify": func(a []string) string { return ints(a, 0, 1) },
+	"tls-client":           none,
+	"keepalive":            keepalive,
+	"reneg-sec":            renegSec,
+	"mssfix":               mssfix,
 	"verb":                 oneInt, "mute": oneInt, "ping": oneInt, "ping-restart": oneInt,
 	"connect-timeout": oneInt, "server-poll-timeout": oneInt,
 	"connect-retry":    func(a []string) string { return ints(a, 1, 2) },
@@ -194,7 +198,7 @@ func isInt(s string) bool {
 
 func ints(a []string, min, max int) string {
 	if len(a) < min || len(a) > max {
-		return "nombre d'arguments incorrect"
+		return "wrong number of arguments"
 	}
 	for _, s := range a {
 		if !isInt(s) {
@@ -204,7 +208,58 @@ func ints(a []string, min, max int) string {
 	return ""
 }
 
-// isName : jeton sûr (algorithmes, noms de certificat...), sans espace ni métacaractère.
+// isName reports whether s is a safe token (algorithms, certificate names...), with no space or metacharacter.
+// inRange checks that every argument is an integer within [lo, hi].
+func inRange(a []string, lo, hi int) string {
+	for _, s := range a {
+		if !isInt(s) {
+			return "integer expected"
+		}
+		if n := atoi(s); n < lo || n > hi {
+			return fmt.Sprintf("value out of range %d-%d", lo, hi)
+		}
+	}
+	return ""
+}
+
+func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
+
+// keepalive <interval> <timeout>: 1 <= interval <= 3600, interval < timeout <= 7200.
+func keepalive(a []string) string {
+	if len(a) != 2 {
+		return "2 arguments expected"
+	}
+	if r := inRange(a[:1], 1, 3600); r != "" {
+		return r
+	}
+	if r := inRange(a[1:], 1, 7200); r != "" {
+		return r
+	}
+	if atoi(a[0]) >= atoi(a[1]) {
+		return "timeout must be greater than interval"
+	}
+	return ""
+}
+
+// reneg-sec <max> [<min>], in seconds (OpenVPN 2.6 syntax), 0 to 7 days.
+func renegSec(a []string) string {
+	if len(a) < 1 || len(a) > 2 {
+		return "1 or 2 arguments expected"
+	}
+	return inRange(a, 0, 604800)
+}
+
+// mssfix [<n>]: the OpenVPN 2.6 --help documents no "mtu" keyword, so it is refused.
+func mssfix(a []string) string {
+	if len(a) > 1 {
+		return "at most 1 argument expected"
+	}
+	if len(a) == 1 && a[0] == "0" { // 0 disables mssfix
+		return ""
+	}
+	return inRange(a, 576, 9000)
+}
+
 func isName(s string) bool {
 	if s == "" || len(s) > 256 {
 		return false
@@ -222,7 +277,7 @@ func isName(s string) bool {
 
 func names(a []string, min, max int) string {
 	if len(a) < min || len(a) > max {
-		return "nombre d'arguments incorrect"
+		return "wrong number of arguments"
 	}
 	for _, s := range a {
 		if !isName(s) {
@@ -297,11 +352,11 @@ func validHost(h string) bool {
 			}
 		}
 	}
-	// un dernier label numérique évite les formes IPv4 exotiques (127.1, 0x7f...).
+	// a numeric last label rules out exotic IPv4 forms (127.1, 0x7f...).
 	return !isInt(labels[len(labels)-1])
 }
 
-// tokenize découpe une ligne : espaces, guillemets simples ou doubles.
+// tokenize splits a line on spaces, honouring single or double quotes.
 func tokenize(line string) ([]string, error) {
 	var toks []string
 	var cur strings.Builder
@@ -364,7 +419,7 @@ func checkPEM(lines []string) ([]string, string) {
 		case label == "":
 			return nil, "content outside PEM"
 		default:
-			if i := strings.Index(l, ": "); i > 0 { // en-tête PEM
+			if i := strings.Index(l, ": "); i > 0 { // PEM header
 				continue
 			}
 			for _, r := range l {
@@ -383,7 +438,7 @@ func checkPEM(lines []string) ([]string, string) {
 	return kept, ""
 }
 
-// Parse valide content et renvoie la config assainie.
+// Parse validates content and returns the sanitized config.
 func Parse(content []byte) (*Config, error) {
 	g := func(r string) error { return &RejectError{Reason: r} }
 	if len(content) > MaxSize {
@@ -493,6 +548,12 @@ func Parse(content []byte) (*Config, error) {
 		if d == "proto" {
 			globalProto, _ = normProto(args[0])
 			args = []string{globalProto}
+		}
+		if d == "keepalive" || d == "reneg-sec" || d == "mssfix" {
+			// regenerate from the validated values (drops leading zeros)
+			for i, a := range args {
+				args[i] = strconv.Itoa(atoi(a))
+			}
 		}
 		out.WriteString(strings.Join(append([]string{d}, args...), " ") + "\n")
 	}

@@ -29,6 +29,7 @@ func TestAccepted(t *testing.T) {
 	}{
 		{"thm.ovpn", []Remote{{"ga-eu-west-3-vpn.vm.tryhackme.com", 1194, "udp"}}},
 		{"htb.ovpn", []Remote{{"edge-eu-free-1.hackthebox.eu", 1337, "udp"}}},
+		{"htb-extra.ovpn", []Remote{{"edge-eu-free-1.hackthebox.eu", 1337, "udp"}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.file, func(t *testing.T) {
@@ -40,14 +41,14 @@ func TestAccepted(t *testing.T) {
 				t.Fatalf("remotes = %+v", c.Remotes)
 			}
 			if !bytes.HasSuffix(c.Sanitized, []byte("\n")) {
-				t.Fatal("pas de \\n final")
+				t.Fatal("no trailing \\n")
 			}
 			c2, err := Parse(c.Sanitized)
 			if err != nil {
-				t.Fatalf("re-parse : %v", err)
+				t.Fatalf("re-parse: %v", err)
 			}
 			if !reflect.DeepEqual(c, c2) || !bytes.Equal(c.Sanitized, c2.Sanitized) {
-				t.Fatal("non idempotent")
+				t.Fatal("not idempotent")
 			}
 		})
 	}
@@ -69,7 +70,7 @@ func TestSanitizedOnlyAllowed(t *testing.T) {
 		default:
 			d := strings.Fields(l)[0]
 			if _, ok := allowed[d]; !ok && d != "remote" {
-				t.Errorf("directive not in allow list : %q", d)
+				t.Errorf("directive not in allowlist: %q", d)
 			}
 		}
 	}
@@ -168,10 +169,10 @@ func TestRejected(t *testing.T) {
 			_, err := Parse([]byte(base + l + "\n"))
 			var re *RejectError
 			if !errors.As(err, &re) {
-				t.Fatalf("attendu RejectError, obtenu %v", err)
+				t.Fatalf("expected RejectError, got %v", err)
 			}
 			if re.Line != 3 {
-				t.Fatalf("ligne = %d (%v)", re.Line, err)
+				t.Fatalf("line = %d (%v)", re.Line, err)
 			}
 		})
 	}
@@ -211,7 +212,7 @@ func TestBadInputs(t *testing.T) {
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Parse([]byte(in)); err == nil {
-				t.Fatal("attendu une erreur")
+				t.Fatal("expected an error")
 			} else if !errors.As(err, new(*RejectError)) {
 				t.Fatalf("type %T", err)
 			}
@@ -226,7 +227,7 @@ func TestBadInputs(t *testing.T) {
 func TestTestdataRejected(t *testing.T) {
 	for _, f := range []string{"thm-with-secrets.ovpn", "evil-up.ovpn", "evil-script-security.ovpn", "evil-unclosed.ovpn"} {
 		if _, err := Parse(readTD(t, f)); err == nil {
-			t.Errorf("%s accepté", f)
+			t.Errorf("%s accepted", f)
 		}
 	}
 }
@@ -306,5 +307,58 @@ func TestPEMComments(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s: accepted: %q", name, c.Sanitized)
 		}
+	}
+}
+
+func TestTimingDirectives(t *testing.T) {
+	ok := map[string]string{ // input line -> sanitized line
+		"tls-client":          "tls-client",
+		"keepalive 10 60":     "keepalive 10 60",
+		"keepalive 1 2":       "keepalive 1 2",
+		"keepalive 3600 7200": "keepalive 3600 7200",
+		"keepalive 010 060":   "keepalive 10 60",
+		"reneg-sec 0":         "reneg-sec 0",
+		"reneg-sec 3600":      "reneg-sec 3600",
+		"reneg-sec 604800":    "reneg-sec 604800",
+		"reneg-sec 3600 600":  "reneg-sec 3600 600",
+		"mssfix":              "mssfix",
+		"mssfix 576":          "mssfix 576",
+		"mssfix 0":            "mssfix 0",
+		"mssfix 1450":         "mssfix 1450",
+		"mssfix 9000":         "mssfix 9000",
+	}
+	for in, want := range ok {
+		t.Run("ok "+in, func(t *testing.T) {
+			c, err := Parse([]byte(base + in + "\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(c.Sanitized) != base+want+"\n" {
+				t.Fatalf("sanitized = %q", c.Sanitized)
+			}
+			c2, err := Parse(c.Sanitized)
+			if err != nil || !bytes.Equal(c.Sanitized, c2.Sanitized) {
+				t.Fatalf("not idempotent: %v", err)
+			}
+		})
+	}
+	bad := []string{
+		"tls-client x", "tls-client 1",
+		"keepalive", "keepalive 10", "keepalive 10 60 1", "keepalive a 60", "keepalive 10 b",
+		"keepalive 0 60", "keepalive 3601 7200", "keepalive 10 7201", "keepalive 10 10", "keepalive 60 10",
+		"keepalive -1 10", "keepalive 10.5 60", `keepalive "10 60"`, "keepalive 10 60#", "keepalive 10 60\r x",
+		"keepalive 10 '60;id'", "keepalive 99999999999 99999999999",
+		"reneg-sec", "reneg-sec a", "reneg-sec -1", "reneg-sec 604801", "reneg-sec 1 2 3", "reneg-sec 3600 604801",
+		"reneg-sec 3600 x", "reneg-sec 36#00", `reneg-sec 3600"`, "reneg-sec 3600\r id", "reneg-sec 3600 '1;id'",
+		"mssfix 575", "mssfix 9001", "mssfix a", "mssfix -1", "mssfix 1400 mtu", "mssfix mtu",
+		"mssfix 1400 1500", `mssfix "1400`, "mssfix 14#00", "mssfix 1400\r id", "mssfix '1400;id'",
+	}
+	for _, l := range bad {
+		t.Run("bad "+l, func(t *testing.T) {
+			_, err := Parse([]byte(base + l + "\n"))
+			if !errors.As(err, new(*RejectError)) {
+				t.Fatalf("expected RejectError, got %v", err)
+			}
+		})
 	}
 }
