@@ -42,7 +42,7 @@ func (r *Resolved) call(ctx context.Context, args ...string) error {
 // Apply sets the DNS servers of iface; with force, all domains are routed through it.
 func (r *Resolved) Apply(ctx context.Context, iface string, servers []netip.Addr, force bool) error {
 	if !ifaceRe.MatchString(iface) {
-		return errors.New("dns: interface invalide")
+		return errors.New("dns: invalid interface")
 	}
 	if len(servers) == 0 {
 		return nil
@@ -50,7 +50,7 @@ func (r *Resolved) Apply(ctx context.Context, iface string, servers []netip.Addr
 	args := []string{"dns", iface}
 	for _, s := range servers {
 		if !s.IsValid() {
-			return errors.New("dns: adresse invalide")
+			return errors.New("dns: invalid address")
 		}
 		args = append(args, s.String())
 	}
@@ -69,7 +69,7 @@ func (r *Resolved) Apply(ctx context.Context, iface string, servers []netip.Addr
 // Revert drops all per-link DNS settings of iface.
 func (r *Resolved) Revert(ctx context.Context, iface string) error {
 	if !ifaceRe.MatchString(iface) {
-		return errors.New("dns: interface invalide")
+		return errors.New("dns: invalid interface")
 	}
 	return r.call(ctx, "revert", iface)
 }

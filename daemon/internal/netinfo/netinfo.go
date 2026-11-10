@@ -29,7 +29,7 @@ func IPv4(iface string) (netip.Addr, error) {
 			return ip, nil
 		}
 	}
-	return netip.Addr{}, fmt.Errorf("aucune adresse IPv4 sur %s", iface)
+	return netip.Addr{}, fmt.Errorf("no IPv4 address on %s", iface)
 }
 
 // Exists indique si l'interface existe.

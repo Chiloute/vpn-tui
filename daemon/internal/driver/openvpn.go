@@ -63,7 +63,7 @@ func (d OpenVPN) Up(ctx context.Context, p *profile.Profile, s state.Secrets, ep
 		User: d.User, Group: d.Group, ConnectTimeout: d.ConnectTimeout}
 	if needsAuth(c) {
 		if s.Username == "" || s.Password == "" {
-			return nil, state.Info{}, fmt.Errorf("%w : identifiant ou mot de passe absent", ErrSecrets)
+			return nil, state.Info{}, fmt.Errorf("%w: missing username or password", ErrSecrets)
 		}
 		o.Username, o.Password = s.Username, s.Password
 	}
@@ -90,7 +90,7 @@ func (d OpenVPN) ovpnTunnel(ctx context.Context, p *profile.Profile, proc *ovpn.
 // Adopt re-attaches to the OpenVPN left by a previous daemon (comm checked by ovpn.Adopt).
 func (d OpenVPN) Adopt(ctx context.Context, p *profile.Profile, iface string, pid int) (state.Tunnel, state.Info, error) {
 	if iface != Iface {
-		return nil, state.Info{}, fmt.Errorf("interface inattendue %q", iface)
+		return nil, state.Info{}, fmt.Errorf("unexpected interface %q", iface)
 	}
 	proc, err := ovpn.Adopt(pid, iface, d.RunDir)
 	if err != nil {

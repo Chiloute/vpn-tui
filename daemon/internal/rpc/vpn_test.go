@@ -169,7 +169,7 @@ func TestVPNMethods(t *testing.T) {
 	// failed connection: clear error, locked (kill switch on), schema-conformant status
 	fd.fail.Store(true)
 	m = req(t, path, "up", map[string]any{"id": "wg1", "secrets": map[string]any{"private_key": pw}})
-	if e, _ := m["error"].(map[string]any); e == nil || !strings.Contains(e["message"].(string), "échec de la connexion") {
+	if e, _ := m["error"].(map[string]any); e == nil || !strings.Contains(e["message"].(string), "connection failed") {
 		t.Fatalf("%v", m)
 	}
 	if r := status(); r["state"] != "locked" {

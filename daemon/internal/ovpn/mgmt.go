@@ -104,13 +104,13 @@ func (m *mgmt) command(cmd string) error {
 	select {
 	case r := <-m.replies:
 		if strings.HasPrefix(r, "ERROR:") {
-			return fmt.Errorf("management « %s » : %s", cmd, r)
+			return fmt.Errorf("management %q: %s", cmd, r)
 		}
 		return nil
 	case <-m.done:
-		return errors.New("management fermé")
+		return errors.New("management closed")
 	case <-time.After(cmdTimeout):
-		return fmt.Errorf("management « %s » : pas de réponse", cmd)
+		return fmt.Errorf("management %q: no response", cmd)
 	}
 }
 

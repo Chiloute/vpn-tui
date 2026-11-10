@@ -69,7 +69,7 @@ func TestSanitizedOnlyAllowed(t *testing.T) {
 		default:
 			d := strings.Fields(l)[0]
 			if _, ok := allowed[d]; !ok && d != "remote" {
-				t.Errorf("directive hors liste : %q", d)
+				t.Errorf("directive not in allow list : %q", d)
 			}
 		}
 	}
@@ -179,11 +179,11 @@ func TestRejected(t *testing.T) {
 
 func TestReasons(t *testing.T) {
 	_, err := Parse([]byte(base + "up /bin/sh\n"))
-	if err == nil || err.Error() != "ligne 3 : directive « up » interdite (exécute un script)" {
+	if err == nil || err.Error() != "line 3: directive \"up\" is forbidden (runs a script)" {
 		t.Fatalf("%v", err)
 	}
 	_, err = Parse([]byte(base + "foo\n"))
-	if re := new(RejectError); !errors.As(err, &re) || re.Reason != "non autorisée" {
+	if re := new(RejectError); !errors.As(err, &re) || re.Reason != "is not allowed" {
 		t.Fatalf("%v", err)
 	}
 }
@@ -218,7 +218,7 @@ func TestBadInputs(t *testing.T) {
 		})
 	}
 	_, err := Parse([]byte(blk("auth-user-pass", "u\np\n")))
-	if err == nil || !strings.Contains(err.Error(), "secret en clair : le client doit l'extraire vers le keyring") {
+	if err == nil || !strings.Contains(err.Error(), "plaintext secret: the client must move it to the keyring") {
 		t.Fatalf("%v", err)
 	}
 }
@@ -269,5 +269,42 @@ block-outside-dns
 `
 	if _, err := Parse([]byte(in)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+const genkeyHdr = "#\n# 2048 bit OpenVPN static key\n#\n-----BEGIN OpenVPN Static key V1-----\nabcd\n-----END OpenVPN Static key V1-----\n"
+
+func TestPEMComments(t *testing.T) {
+	for _, blk := range []string{"tls-crypt", "tls-auth"} {
+		c, err := Parse([]byte(base + "<" + blk + ">\n" + genkeyHdr + "</" + blk + ">\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", blk, err)
+		}
+		if bytes.Contains(c.Sanitized, []byte("#")) || !bytes.Contains(c.Sanitized, []byte("abcd")) {
+			t.Fatalf("%s: sanitized = %q", blk, c.Sanitized)
+		}
+		c2, err := Parse(c.Sanitized)
+		if err != nil || !bytes.Equal(c2.Sanitized, c.Sanitized) {
+			t.Fatalf("%s: not idempotent: %v", blk, err)
+		}
+	}
+	c, err := Parse([]byte(base + "<ca>\n" + pemOK + "# between\n" + pemOK + "; after\n</ca>\n"))
+	if err != nil || bytes.ContainsAny(c.Sanitized, "#;") {
+		t.Fatalf("chain: %v", err)
+	}
+	c, err = Parse(readTD(t, "thm-genkey.ovpn"))
+	if err != nil || bytes.Contains(c.Sanitized, []byte("#")) {
+		t.Fatalf("fixture: %v", err)
+	}
+	for name, in := range map[string]string{
+		"free text":     base + "<ca>\nhello\n" + pemOK + "</ca>\n",
+		"in PEM":        base + "<ca>\n-----BEGIN CERTIFICATE-----\n# x\nAAAA\n-----END CERTIFICATE-----\n</ca>\n",
+		"fake close":    base + "<tls-crypt>\n" + genkeyHdr + "#</tls-crypt>\nup /bin/sh\n",
+		"commented tag": base + "<ca>\n" + pemOK + "# </ca>\n</ca>\n",
+	} {
+		c, err := Parse([]byte(in))
+		if err == nil {
+			t.Errorf("%s: accepted: %q", name, c.Sanitized)
+		}
 	}
 }

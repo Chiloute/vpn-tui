@@ -30,8 +30,8 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("profil introuvable")
-	ErrExists   = errors.New("un profil avec cet identifiant existe déjà")
+	ErrNotFound = errors.New("profile not found")
+	ErrExists   = errors.New("a profile with this id already exists")
 
 	idRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 	tagRe   = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
@@ -128,12 +128,12 @@ func Slug(name string) string {
 
 func checkCIDRs(what string, l []string) error {
 	if len(l) > 1024 {
-		return invalid("%s : trop d'entrées (max 1024)", what)
+		return invalid("%s: too many entries (max 1024)", what)
 	}
 	for _, c := range l {
 		p, err := netip.ParsePrefix(c)
 		if err != nil || p != p.Masked() || p.Addr().Zone() != "" {
-			return invalid("%s : CIDR invalide ou non canonique %q", what, c)
+			return invalid("%s: invalid or non-canonical CIDR %q", what, c)
 		}
 	}
 	return nil
@@ -141,21 +141,21 @@ func checkCIDRs(what string, l []string) error {
 
 func (p *Profile) validate() error {
 	if !ValidID(p.ID) {
-		return invalid("identifiant invalide (attendu ^[a-z0-9][a-z0-9-]{0,31}$)")
+		return invalid("invalid id (expected ^[a-z0-9][a-z0-9-]{0,31}$)")
 	}
 	if n := utf8.RuneCountInString(p.Name); n < 1 || n > 64 {
-		return invalid("nom invalide (1 à 64 caractères)")
+		return invalid("invalid name (1 to 64 characters)")
 	}
 	if len(p.Tags) > 8 {
-		return invalid("trop de tags (max 8)")
+		return invalid("too many tags (max 8)")
 	}
 	for _, t := range p.Tags {
 		if !tagRe.MatchString(t) {
-			return invalid("tag invalide %q", t)
+			return invalid("invalid tag %q", t)
 		}
 	}
 	if !colorRe.MatchString(p.Color) {
-		return invalid("couleur invalide %q (base00..base0F)", p.Color)
+		return invalid("invalid color %q (base00..base0F)", p.Color)
 	}
 	for what, l := range map[string][]string{"scope.cidrs": p.Scope.CIDRs, "scope.exclude": p.Scope.Exclude, "scope.learned": p.Scope.Learned} {
 		if err := checkCIDRs(what, l); err != nil {
@@ -163,17 +163,17 @@ func (p *Profile) validate() error {
 		}
 	}
 	if len(p.DNS.Servers) > 8 {
-		return invalid("trop de serveurs DNS (max 8)")
+		return invalid("too many DNS servers (max 8)")
 	}
 	for _, d := range p.DNS.Servers {
 		if a, err := netip.ParseAddr(d); err != nil || a.Zone() != "" {
-			return invalid("serveur DNS invalide %q", d)
+			return invalid("invalid DNS server %q", d)
 		}
 	}
 	switch {
 	case p.Type == TypeOpenVPN && p.Config == "client.ovpn", p.Type == TypeWireGuard && p.Config == "wg.conf":
 	default:
-		return invalid("type/config invalide")
+		return invalid("invalid type/config")
 	}
 	return nil
 }
@@ -181,7 +181,7 @@ func (p *Profile) validate() error {
 // regularDir returns a sub-root for id, refusing symlinks and non-directories.
 func regularDir(rt *os.Root, id string) (*os.Root, error) {
 	if !ValidID(id) {
-		return nil, invalid("identifiant invalide")
+		return nil, invalid("invalid id")
 	}
 	fi, err := rt.Lstat(id)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -191,7 +191,7 @@ func regularDir(rt *os.Root, id string) (*os.Root, error) {
 		return nil, err
 	}
 	if !fi.IsDir() {
-		return nil, invalid("entrée de profil invalide (lien symbolique ou fichier)")
+		return nil, invalid("invalid profile entry (symlink or file)")
 	}
 	return rt.OpenRoot(id)
 }
@@ -233,7 +233,7 @@ func load(d *os.Root) (*Profile, error) {
 		return nil, err
 	}
 	if !fi.Mode().IsRegular() {
-		return nil, invalid("%s n'est pas un fichier régulier", tomlName)
+		return nil, invalid("%s is not a regular file", tomlName)
 	}
 	data, err := d.ReadFile(tomlName)
 	if err != nil {
@@ -241,7 +241,7 @@ func load(d *os.Root) (*Profile, error) {
 	}
 	var p Profile
 	if _, err := toml.Decode(string(data), &p); err != nil {
-		return nil, invalid("profile.toml illisible")
+		return nil, invalid("unreadable profile.toml")
 	}
 	if err := p.validate(); err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ func (s *Store) Get(id string) (*Profile, error) {
 	defer d.Close()
 	p, err := load(d)
 	if err == nil && p.ID != id {
-		return nil, invalid("identifiant incohérent dans profile.toml")
+		return nil, invalid("inconsistent id in profile.toml")
 	}
 	return p, err
 }
@@ -289,7 +289,7 @@ func (s *Store) ReadConfig(id string) ([]byte, error) {
 		return nil, err
 	}
 	if !fi.Mode().IsRegular() {
-		return nil, invalid("%s n'est pas un fichier régulier", p.Config)
+		return nil, invalid("%s is not a regular file", p.Config)
 	}
 	return d.ReadFile(p.Config)
 }
@@ -314,7 +314,7 @@ func (s *Store) List() ([]*Profile, error) {
 	for _, e := range ents {
 		p, err := s.Get(e.Name())
 		if err != nil {
-			slog.Warn("profil ignoré", "id", e.Name())
+			slog.Warn("profile ignored", "id", e.Name())
 			continue
 		}
 		out = append(out, p)
@@ -357,7 +357,7 @@ func (s *Store) Import(typ, name, id, content string) (*Profile, error) {
 		clean = c.Sanitized
 		p.Secrets.KeyringRef = "vpn-tui/" + p.ID
 	default:
-		return nil, invalid("type inconnu")
+		return nil, invalid("unknown type")
 	}
 	if err := p.validate(); err != nil {
 		return nil, err

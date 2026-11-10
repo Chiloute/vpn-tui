@@ -268,9 +268,9 @@ func TestStartNoAuthFile(t *testing.T) {
 
 func TestStartFailures(t *testing.T) {
 	for _, tc := range []struct{ mode, want string }{
-		{"fail", "a quitté"},
-		{"hang", "délai"},
-		{"password", "authentification requise"},
+		{"fail", "exited"},
+		{"hang", "timeout"},
+		{"password", "authentication required"},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			o := testOpts(t, tc.mode)

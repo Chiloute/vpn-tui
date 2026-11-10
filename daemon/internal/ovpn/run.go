@@ -53,7 +53,7 @@ func Resolve(ctx context.Context, c *Config) ([]Resolved, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, errors.Join(append([]error{errors.New("aucune adresse de serveur résolue")}, errs...)...)
+		return nil, errors.Join(append([]error{errors.New("no server address resolved")}, errs...)...)
 	}
 	return out, nil
 }
@@ -226,9 +226,9 @@ func (p *Process) consume() {
 				p.markDead()
 			}
 		case "PASSWORD":
-			p.fail(errors.New("authentification requise"))
+			p.fail(errors.New("authentication required"))
 		case "FATAL":
-			p.fail(fmt.Errorf("openvpn fatal : %s", n.Text))
+			p.fail(fmt.Errorf("openvpn fatal: %s", n.Text))
 		}
 	}
 	p.markDead()
@@ -242,9 +242,9 @@ func (p *Process) deadErr() error {
 	}
 	select {
 	case <-p.exited:
-		return fmt.Errorf("openvpn a quitté avant CONNECTED : %v", p.waitErr)
+		return fmt.Errorf("openvpn exited before CONNECTED: %v", p.waitErr)
 	default:
-		return errors.New("management rompu avant CONNECTED")
+		return errors.New("management broken before CONNECTED")
 	}
 }
 
@@ -262,10 +262,10 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 		o.ConnectTimeout = 60 * time.Second
 	}
 	if o.Config == nil || len(o.Remotes) == 0 || o.RunDir == "" || o.ID == "" || o.Iface == "" {
-		return nil, errors.New("options de lancement incomplètes")
+		return nil, errors.New("incomplete launch options")
 	}
 	if strings.ContainsAny(o.Username+o.Password, "\n\r\x00") {
-		return nil, errors.New("identifiants invalides (saut de ligne)")
+		return nil, errors.New("invalid credentials (newline)")
 	}
 	p := &Process{
 		o: o, conf: filepath.Join(o.RunDir, "ovpn-"+o.ID+".conf"), auth: filepath.Join(o.RunDir, "auth-"+o.ID),
@@ -356,7 +356,7 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 
 func ctxErr(ctx context.Context) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return errors.New("délai de connexion OpenVPN dépassé")
+		return errors.New("OpenVPN connection timeout exceeded")
 	}
 	return ctx.Err()
 }
@@ -399,7 +399,7 @@ func (p *Process) Stop() error {
 		}
 		p.cmd.Process.Kill()
 		if !p.waitExit(stopGrace) {
-			p.stopErr = errors.New("openvpn ne répond pas à SIGKILL (pid " + strconv.Itoa(p.cmd.Process.Pid) + ")")
+			p.stopErr = errors.New("openvpn does not respond to SIGKILL (pid " + strconv.Itoa(p.cmd.Process.Pid) + ")")
 		}
 	})
 	return p.stopErr
@@ -416,7 +416,7 @@ var adoptPoll = 500 * time.Millisecond
 // whose /proc/<pid>/comm is not "openvpn". Dead fires when the process or iface disappears.
 func Adopt(pid int, iface, runDir string) (*Process, error) {
 	if pid <= 1 || !isOpenVPN(pid) {
-		return nil, fmt.Errorf("pid %d n'est pas un processus openvpn", pid)
+		return nil, fmt.Errorf("pid %d is not an openvpn process", pid)
 	}
 	p := &Process{o: StartOpts{Iface: iface, RunDir: runDir}, pid: pid, dead: make(chan struct{}), exited: make(chan struct{})}
 	for _, g := range []string{"ovpn-*.conf", "auth-*", "ovpn-mgmt.sock"} {
@@ -454,5 +454,5 @@ func (p *Process) stopAdopted() {
 			return
 		}
 	}
-	p.stopErr = errors.New("openvpn ne répond pas à SIGKILL (pid " + strconv.Itoa(p.pid) + ")")
+	p.stopErr = errors.New("openvpn does not respond to SIGKILL (pid " + strconv.Itoa(p.pid) + ")")
 }

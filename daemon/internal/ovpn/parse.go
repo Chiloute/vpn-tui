@@ -43,37 +43,37 @@ func (e *RejectError) Error() string {
 	if e.Line == 0 {
 		return e.Reason
 	}
-	return fmt.Sprintf("ligne %d : directive « %s » %s", e.Line, e.Directive, e.Reason)
+	return fmt.Sprintf("line %d: directive \"%s\" %s", e.Line, e.Directive, e.Reason)
 }
 
 const (
-	reasonNotAllowed = "non autorisée"
-	reasonFile       = "interdite (référence un fichier externe : seuls les blocs intégrés sont acceptés)"
-	reasonSecret     = "secret en clair : le client doit l'extraire vers le keyring"
+	reasonNotAllowed = "is not allowed"
+	reasonFile       = "is forbidden (references an external file: only inline blocks are accepted)"
+	reasonSecret     = "plaintext secret: the client must move it to the keyring"
 )
 
 var dangerous = map[string]string{
-	"up":                    "interdite (exécute un script)",
-	"down":                  "interdite (exécute un script)",
-	"route-up":              "interdite (exécute un script)",
-	"route-pre-down":        "interdite (exécute un script)",
-	"ipchange":              "interdite (exécute une commande)",
-	"tls-verify":            "interdite (exécute un script)",
-	"learn-address":         "interdite (exécute un script)",
-	"client-connect":        "interdite (exécute un script)",
-	"client-disconnect":     "interdite (exécute un script)",
-	"auth-user-pass-verify": "interdite (exécute un script)",
-	"script-security":       "interdite (autorise l'exécution de scripts)",
-	"plugin":                "interdite (charge du code natif)",
-	"iproute":               "interdite (exécute un programme arbitraire)",
-	"config":                "interdite (inclut un fichier externe)",
-	"cd":                    "interdite (change de répertoire)",
-	"chroot":                "interdite (change la racine)",
-	"writepid":              "interdite (écrit un fichier arbitraire)",
-	"log":                   "interdite (écrit un fichier arbitraire)",
-	"log-append":            "interdite (écrit un fichier arbitraire)",
-	"status":                "interdite (écrit un fichier arbitraire)",
-	"daemon":                "interdite (change le mode d'exécution)",
+	"up":                    "is forbidden (runs a script)",
+	"down":                  "is forbidden (runs a script)",
+	"route-up":              "is forbidden (runs a script)",
+	"route-pre-down":        "is forbidden (runs a script)",
+	"ipchange":              "is forbidden (runs a command)",
+	"tls-verify":            "is forbidden (runs a script)",
+	"learn-address":         "is forbidden (runs a script)",
+	"client-connect":        "is forbidden (runs a script)",
+	"client-disconnect":     "is forbidden (runs a script)",
+	"auth-user-pass-verify": "is forbidden (runs a script)",
+	"script-security":       "is forbidden (allows running scripts)",
+	"plugin":                "is forbidden (loads native code)",
+	"iproute":               "is forbidden (runs an arbitrary program)",
+	"config":                "is forbidden (includes an external file)",
+	"cd":                    "is forbidden (changes directory)",
+	"chroot":                "is forbidden (changes the root)",
+	"writepid":              "is forbidden (writes an arbitrary file)",
+	"log":                   "is forbidden (writes an arbitrary file)",
+	"log-append":            "is forbidden (writes an arbitrary file)",
+	"status":                "is forbidden (writes an arbitrary file)",
+	"daemon":                "is forbidden (changes the execution mode)",
 	"ca":                    reasonFile,
 	"cert":                  reasonFile,
 	"key":                   reasonFile,
@@ -84,9 +84,9 @@ var dangerous = map[string]string{
 }
 
 var dangerousPrefix = map[string]string{
-	"management": "interdite (ouvre une interface de contrôle)",
-	"setenv":     "interdite (modifie l'environnement)",
-	"pkcs11-":    "interdite (charge une bibliothèque externe)",
+	"management": "is forbidden (opens a control interface)",
+	"setenv":     "is forbidden (modifies the environment)",
+	"pkcs11-":    "is forbidden (loads an external library)",
 }
 
 // kinds de validation d'arguments.
@@ -99,7 +99,7 @@ var (
 	// cipher/auth "none" would send the tunnel in clear text.
 	cryptoName = func(a []string) string {
 		if len(a) == 1 && strings.EqualFold(a[0], "none") {
-			return "« none » interdit (trafic en clair)"
+			return "\"none\" forbidden (cleartext traffic)"
 		}
 		return oneName(a)
 	}
@@ -116,7 +116,7 @@ var allowed = map[string]argSpec{
 			return exact(a, 1)
 		}
 		if _, ok := normProto(a[0]); !ok {
-			return "protocole inconnu"
+			return "unknown protocol"
 		}
 		return ""
 	},
@@ -138,10 +138,10 @@ var allowed = map[string]argSpec{
 	"tls-cipher":            oneName,
 	"tls-version-min": func(a []string) string {
 		if len(a) == 2 && a[1] != "or-highest" {
-			return "second argument attendu : or-highest"
+			return "second argument expected: or-highest"
 		}
 		if len(a) == 0 || len(a) > 2 {
-			return "1 ou 2 arguments attendus"
+			return "1 or 2 arguments expected"
 		}
 		return names(a, 1, 2)
 	},
@@ -156,7 +156,7 @@ var allowed = map[string]argSpec{
 func lit(v string) argSpec {
 	return func(a []string) string {
 		if len(a) != 1 || a[0] != v {
-			return "seule la valeur « " + v + " » est acceptée"
+			return "only the value \"" + v + "\" is accepted"
 		}
 		return ""
 	}
@@ -170,12 +170,12 @@ func oneOf(a []string, vals ...string) string {
 			}
 		}
 	}
-	return "valeur attendue : " + strings.Join(vals, "|")
+	return "expected value: " + strings.Join(vals, "|")
 }
 
 func exact(a []string, n int) string {
 	if len(a) != n {
-		return fmt.Sprintf("%d argument(s) attendu(s)", n)
+		return fmt.Sprintf("%d argument(s) expected", n)
 	}
 	return ""
 }
@@ -198,7 +198,7 @@ func ints(a []string, min, max int) string {
 	}
 	for _, s := range a {
 		if !isInt(s) {
-			return "entier attendu"
+			return "integer expected"
 		}
 	}
 	return ""
@@ -226,7 +226,7 @@ func names(a []string, min, max int) string {
 	}
 	for _, s := range a {
 		if !isName(s) {
-			return "caractères non autorisés"
+			return "characters not allowed"
 		}
 	}
 	return ""
@@ -234,10 +234,10 @@ func names(a []string, min, max int) string {
 
 func verifyName(a []string) string {
 	if len(a) < 1 || len(a) > 2 {
-		return "1 ou 2 arguments attendus"
+		return "1 or 2 arguments expected"
 	}
 	if len(a) == 2 && a[1] != "name" && a[1] != "name-prefix" && a[1] != "subject" {
-		return "type inconnu"
+		return "unknown type"
 	}
 	return names(a[:1], 1, 1)
 }
@@ -247,7 +247,7 @@ func redirectGW(a []string) string {
 		switch s {
 		case "local", "autolocal", "def1", "bypass-dhcp", "bypass-dns", "block-local", "ipv6", "!ipv4":
 		default:
-			return "option inconnue « " + s + " »"
+			return "unknown option \"" + s + "\""
 		}
 	}
 	return ""
@@ -255,7 +255,7 @@ func redirectGW(a []string) string {
 
 func routeArgs(a []string) string {
 	if len(a) < 1 || len(a) > 4 {
-		return "1 à 4 arguments attendus"
+		return "1 to 4 arguments expected"
 	}
 	for i, s := range a {
 		if s == "vpn_gateway" || s == "net_gateway" || s == "remote_host" || s == "default" || isInt(s) {
@@ -264,7 +264,7 @@ func routeArgs(a []string) string {
 		if _, err := netip.ParseAddr(s); err == nil && !strings.Contains(s, "%") {
 			continue
 		}
-		return fmt.Sprintf("argument %d invalide", i+1)
+		return fmt.Sprintf("invalid argument %d", i+1)
 	}
 	return ""
 }
@@ -328,7 +328,7 @@ func tokenize(line string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, fmt.Errorf("guillemet non fermé")
+		return nil, fmt.Errorf("unclosed quote")
 	}
 	if in {
 		toks = append(toks, cur.String())
@@ -338,59 +338,66 @@ func tokenize(line string) ([]string, error) {
 
 var blocks = map[string]bool{"ca": true, "cert": true, "key": true, "tls-auth": true, "tls-crypt": true, "tls-crypt-v2": true}
 
-// checkPEM vérifie que le contenu est une suite de blocs PEM (ou clé statique OpenVPN).
-func checkPEM(lines []string) string {
+// checkPEM checks that the content is a sequence of PEM objects (or an OpenVPN
+// static key) and returns only the validated lines: comment lines outside
+// BEGIN/END (e.g. the `openvpn --genkey` header) are dropped.
+func checkPEM(lines []string) ([]string, string) {
 	label, n := "", 0
+	var kept []string
 	for _, l := range lines {
+		if label == "" && (l[0] == '#' || l[0] == ';') {
+			continue
+		}
+		kept = append(kept, l)
 		switch {
 		case strings.HasPrefix(l, "-----BEGIN ") && strings.HasSuffix(l, "-----"):
 			if label != "" {
-				return "BEGIN imbriqué"
+				return nil, "nested BEGIN"
 			}
 			label = strings.TrimSuffix(strings.TrimPrefix(l, "-----BEGIN "), "-----")
 		case strings.HasPrefix(l, "-----END ") && strings.HasSuffix(l, "-----"):
 			if label == "" || strings.TrimSuffix(strings.TrimPrefix(l, "-----END "), "-----") != label {
-				return "END sans BEGIN correspondant"
+				return nil, "END without matching BEGIN"
 			}
 			label = ""
 			n++
 		case label == "":
-			return "contenu hors PEM"
+			return nil, "content outside PEM"
 		default:
 			if i := strings.Index(l, ": "); i > 0 { // en-tête PEM
 				continue
 			}
 			for _, r := range l {
 				if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '+' || r == '/' || r == '=') {
-					return "caractère invalide dans le PEM"
+					return nil, "invalid character in PEM"
 				}
 			}
 		}
 	}
 	if label != "" {
-		return "PEM non terminé"
+		return nil, "unterminated PEM"
 	}
 	if n == 0 {
-		return "aucun PEM"
+		return nil, "no PEM"
 	}
-	return ""
+	return kept, ""
 }
 
 // Parse valide content et renvoie la config assainie.
 func Parse(content []byte) (*Config, error) {
 	g := func(r string) error { return &RejectError{Reason: r} }
 	if len(content) > MaxSize {
-		return nil, g(fmt.Sprintf("fichier trop gros (max %d octets)", MaxSize))
+		return nil, g(fmt.Sprintf("file too large (max %d bytes)", MaxSize))
 	}
 	if bytes.IndexByte(content, 0) >= 0 {
-		return nil, g("octet NUL interdit")
+		return nil, g("NUL byte forbidden")
 	}
 	if !utf8.Valid(content) {
-		return nil, g("UTF-8 invalide")
+		return nil, g("invalid UTF-8")
 	}
 	for _, b := range content {
 		if b < 0x20 && b != '\n' && b != '\r' && b != '\t' {
-			return nil, g("caractère de contrôle interdit")
+			return nil, g("control character forbidden")
 		}
 	}
 
@@ -409,17 +416,18 @@ func Parse(content []byte) (*Config, error) {
 
 		if blockName != "" {
 			if line == "</"+blockName+">" {
-				if r := checkPEM(blockLines); r != "" {
-					return nil, &RejectError{blockLine, blockName, "bloc invalide (" + r + ")"}
+				kept, r := checkPEM(blockLines)
+				if r != "" {
+					return nil, &RejectError{blockLine, blockName, "invalid block (" + r + ")"}
 				}
 				out.WriteString("<" + blockName + ">\n")
-				for _, l := range blockLines {
+				for _, l := range kept {
 					out.WriteString(l + "\n")
 				}
 				out.WriteString("</" + blockName + ">\n")
 				blockName = ""
-			} else if strings.HasPrefix(line, "<") {
-				return nil, rej(blockName, "bloc imbriqué ou mal fermé")
+			} else if strings.HasPrefix(line, "<") || (line != "" && strings.ContainsRune("#;", rune(line[0])) && strings.HasPrefix(strings.TrimLeft(line, "#; \t"), "<")) {
+				return nil, rej(blockName, "nested or badly closed block")
 			} else if line != "" {
 				blockLines = append(blockLines, line)
 			}
@@ -432,11 +440,11 @@ func Parse(content []byte) (*Config, error) {
 			name := strings.TrimSuffix(strings.TrimPrefix(line, "<"), ">")
 			switch {
 			case !strings.HasSuffix(line, ">") || strings.HasPrefix(line, "</"):
-				return nil, rej(line, "balise de bloc invalide")
+				return nil, rej(line, "invalid block tag")
 			case name == "auth-user-pass":
 				return nil, rej(name, reasonSecret)
 			case !blocks[name]:
-				return nil, rej(name, "bloc inconnu")
+				return nil, rej(name, "unknown block")
 			}
 			blockName, blockLine, blockLines = name, ln, nil
 			continue
@@ -448,7 +456,7 @@ func Parse(content []byte) (*Config, error) {
 		}
 		d, args := toks[0], toks[1:]
 		if strings.HasPrefix(d, "--") {
-			return nil, rej(d, "interdite (préfixe « -- » non accepté)")
+			return nil, rej(d, "is forbidden (\"--\" prefix not accepted)")
 		}
 		if r, ok := dangerous[d]; ok {
 			return nil, rej(d, r)
@@ -464,7 +472,7 @@ func Parse(content []byte) (*Config, error) {
 		if d == "remote" {
 			rm, hasProto, r := parseRemote(args)
 			if r != "" {
-				return nil, rej(d, "argument invalide ("+r+")")
+				return nil, rej(d, "has an invalid argument ("+r+")")
 			}
 			cfg.Remotes = append(cfg.Remotes, rm)
 			remoteHasProto = append(remoteHasProto, hasProto)
@@ -480,7 +488,7 @@ func Parse(content []byte) (*Config, error) {
 			return nil, rej(d, reasonNotAllowed)
 		}
 		if r := spec(args); r != "" {
-			return nil, rej(d, "argument invalide ("+r+")")
+			return nil, rej(d, "has an invalid argument ("+r+")")
 		}
 		if d == "proto" {
 			globalProto, _ = normProto(args[0])
@@ -489,10 +497,10 @@ func Parse(content []byte) (*Config, error) {
 		out.WriteString(strings.Join(append([]string{d}, args...), " ") + "\n")
 	}
 	if blockName != "" {
-		return nil, &RejectError{blockLine, blockName, "bloc non fermé"}
+		return nil, &RejectError{blockLine, blockName, "unclosed block"}
 	}
 	if len(cfg.Remotes) == 0 {
-		return nil, g("aucune directive remote")
+		return nil, g("no remote directive")
 	}
 	for i := range cfg.Remotes {
 		if !remoteHasProto[i] {
@@ -505,26 +513,26 @@ func Parse(content []byte) (*Config, error) {
 
 func parseRemote(a []string) (rm Remote, hasProto bool, reason string) {
 	if len(a) < 1 || len(a) > 3 {
-		return rm, false, "host [port] [proto] attendu"
+		return rm, false, "host [port] [proto] expected"
 	}
 	if !validHost(a[0]) {
-		return rm, false, "hôte invalide"
+		return rm, false, "invalid host"
 	}
 	rm = Remote{Host: a[0], Port: 1194}
 	if len(a) > 1 {
 		if !isInt(a[1]) {
-			return rm, false, "port invalide"
+			return rm, false, "invalid port"
 		}
 		p, _ := strconv.Atoi(a[1])
 		if p < 1 || p > 65535 {
-			return rm, false, "port hors de 1-65535"
+			return rm, false, "port out of range 1-65535"
 		}
 		rm.Port = p
 	}
 	if len(a) > 2 {
 		p, ok := normProto(a[2])
 		if !ok {
-			return rm, false, "protocole inconnu"
+			return rm, false, "unknown protocol"
 		}
 		rm.Proto, hasProto = p, true
 	}
