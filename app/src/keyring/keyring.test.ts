@@ -17,7 +17,7 @@ D="${dir}"
 echo "$@" >> "$D/args.log"
 case "$1" in
   store) cat > "$D/store" ;;
-  lookup) [ -f "$D/store" ] && cat "$D/store" || exit 1 ;;
+  lookup) [ -f "$D/locked" ] && { echo "Cannot unlock the keyring" >&2; exit 1; }; [ -f "$D/store" ] && cat "$D/store" || exit 1 ;;
   clear) rm -f "$D/store" ;;
 esac
 `,
@@ -43,6 +43,15 @@ test("round trip store/lookup/clear without secret in argv", async () => {
   expect(args).toContain("store --label vpn-tui thm service vpn-tui profile thm");
   expect(args).not.toContain("secret-name");
   expect(args).not.toContain("secret-word");
+});
+
+test("lookup failure with stderr is an error, not 'not found'", async () => {
+  writeFileSync(join(dir, "locked"), "");
+  try {
+    await expect(loadSecrets("thm")).rejects.toThrow(/Cannot unlock the keyring/);
+  } finally {
+    rmSync(join(dir, "locked"));
+  }
 });
 
 test("invalid id, invalid shape, binary absent", async () => {

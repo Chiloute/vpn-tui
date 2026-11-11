@@ -349,6 +349,7 @@ test.each([["2h", 2 * 3600e3], ["7d", 7 * 86400e3], ["30m", 30 * 60e3]])("logs -
 test("logs: default 24h, RFC 3339 date, invalid duration", async () => {
   await serve(ok({ events: [] }));
   expect((await run(["logs"])).out).toBe("No events");
+  expect((await run(["logs", "--json"])).out).toBe("");
   expect(Math.abs(Date.now() - 86400e3 - Date.parse(sinceSent()))).toBeLessThan(5000);
   received.length = 0;
   await run(["logs", "--since", "2026-11-01T10:00:00+01:00"]);

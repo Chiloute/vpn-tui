@@ -124,12 +124,14 @@ export function subscribe(onEvent: (e: RpcEvent) => void, opts: SubscribeOpts = 
       if (msg.error) return fatal(`subscription refused (${msg.error.code}): ${msg.error.message}`);
       if (!validator("result_events_subscribe")(msg.result)) return fatal("invalid subscription ack");
       acked = true;
+      sock.setTimeout(0); // the stream may be idle for hours
       return opts.onOpen?.();
     }
     if (!validateNotification(msg)) return err(`invalid notification ignored: ${ajv.errorsText(validateNotification.errors)}`);
     onEvent(msg.params as RpcEvent);
   };
   sock.setEncoding("utf8");
+  sock.setTimeout(5000, () => fatal("subscription ack timed out")); // cleared once acked
   sock.on("error", (e) => fatal(`daemon unreachable (${path}): ${e.message}`));
   sock.on("connect", () => sock.write(JSON.stringify(req) + "\n"));
   sock.on("data", (chunk: string) => {

@@ -12,8 +12,11 @@ async function run(id: string, args: string[], stdin?: string) {
       stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
       stdout: "pipe",
       stderr: "pipe",
+      timeout: 60_000, // a keyring unlock prompt left unanswered must not leave the TUI busy forever
+      killSignal: "SIGKILL",
     });
     const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+    if (p.signalCode) throw new Error(`secret-tool ${args[0]} did not finish (${p.signalCode}): keyring prompt not answered?`);
     return { out, err, code };
   } catch (e: any) {
     if (e?.code === "ENOENT") throw new Error("secret-tool not found: install libsecret");
@@ -28,8 +31,8 @@ export async function storeSecrets(id: string, s: Secrets): Promise<void> {
 
 export async function loadSecrets(id: string): Promise<Secrets | null> {
   const r = await run(id, ["lookup", "service", "vpn-tui", "profile", id]);
-  if (r.code !== 0 && r.out === "") return null;
-  if (r.code !== 0) throw new Error(`secret-tool lookup failed (${r.code})`);
+  if (r.code !== 0 && r.out === "" && r.err.trim() === "") return null; // not found: exit 1, silent
+  if (r.code !== 0) throw new Error(`secret-tool lookup failed (${r.code}): ${r.err.trim()}`);
   let v: any;
   try {
     v = JSON.parse(r.out);

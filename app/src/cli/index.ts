@@ -76,7 +76,7 @@ async function logsCmd(since: string, json: boolean, io: IO, socket?: string): P
   }
   try {
     const { events } = (await call("logs", { since: iso }, { socket })) as unknown as { events: Ev[] };
-    io.out(events.length === 0 ? "No events" : events.map((e) => (json ? JSON.stringify(e) : formatEvent(e))).join("\n"));
+    io.out(events.length === 0 ? (json ? "" : "No events") : events.map((e) => (json ? JSON.stringify(e) : formatEvent(e))).join("\n"));
     return 0;
   } catch (e) {
     return rpcFailure(e, io);
@@ -107,9 +107,7 @@ async function panicOffCmd(yes: boolean, io: IO, socket?: string): Promise<numbe
   }
   try {
     await call("panic_off", undefined, { socket });
-    const s = await getStatus(io, socket);
-    io.out(`Kill switch removed and tunnel dropped.\n${formatStatus(s)}`);
-    return 0;
+    return statusAfter("Kill switch removed and tunnel dropped.\n", io, socket);
   } catch (e) {
     const code = rpcFailure(e, io);
     io.err("last resort (root): vpn-tuid --panic-off, or nft delete table inet vpn_tui");
@@ -192,6 +190,17 @@ async function getStatus(io: IO, socket?: string): Promise<Status> {
   return s;
 }
 
+/** Prints the status after an action that already succeeded: a failing status call is a warning, not a failure. */
+async function statusAfter(done: string, io: IO, socket?: string): Promise<number> {
+  try {
+    io.out(done + formatStatus(await getStatus(io, socket)));
+  } catch (e) {
+    if (done) io.out(done.trimEnd());
+    io.err(`warning: cannot read the status after the action: ${(e as Error).message}`);
+  }
+  return 0;
+}
+
 async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
   try {
     const { profiles } = (await call("list", undefined, { socket })) as unknown as { profiles: Profile[] };
@@ -222,8 +231,7 @@ async function upCmd(id: string, io: IO, socket?: string): Promise<number> {
       io.err(`Daemon error (${e.code}): ${e.message}`);
       return 1;
     }
-    io.out(formatStatus(await getStatus(io, socket)));
-    return 0;
+    return statusAfter("", io, socket);
   } catch (e) {
     return rpcFailure(e, io);
   }
@@ -284,8 +292,7 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
   if (cmd === "down" && rest.length === 0) {
     try {
       await call("down", undefined, { socket });
-      io.out(formatStatus(await getStatus(io, socket)));
-      return 0;
+      return statusAfter("", io, socket);
     } catch (e) {
       return rpcFailure(e, io);
     }

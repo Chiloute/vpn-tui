@@ -90,7 +90,7 @@ Brings the profile `<id>` up. Exactly one identifier is accepted.
 1. The client calls `list` to check that the profile exists and whether it has secrets.
 2. If `has_secrets` is true, it reads the secrets from the keyring (`secret-tool lookup service vpn-tui profile <id>`).
 3. It calls `up` with the identifier and the secrets. The daemon answers once the tunnel is up and the firewall armed.
-4. It prints the same text as `status`.
+4. It prints the same text as `status`. If that last `status` call fails, the profile is up anyway: the command prints a warning on stderr and exits with 0.
 
 Bringing up a profile while another one is active switches from one to the other without removing the firewall (see [architecture.md](architecture.md#state-machine)).
 
@@ -102,7 +102,7 @@ Bringing up a profile while another one is active switches from one to the other
 
 ### `down`
 
-Stops the tunnel and removes the firewall. Prints the resulting state (`○ DISCONNECTED`). Exit code 0, or 3 on a daemon or transport error. If the daemon cannot stop the tunnel or remove the nft table, it returns the error and the state stays `locked`.
+Stops the tunnel and removes the firewall. Prints the resulting state (`○ DISCONNECTED`). Exit code 0, or 3 on a daemon or transport error. If the daemon cannot stop the tunnel or remove the nft table, it returns the error, applies the lock and the state becomes `locked`. If only the `status` call after the `down` fails, the command prints a warning and exits with 0.
 
 ### `lhost`
 
@@ -127,7 +127,7 @@ Prints the events of the daemon journal, oldest first (1000 at most).
 | `--since` | Duration (`30m`, `24h`, `7d`) or RFC 3339 date. | `24h` |
 | `--json` | One JSON event per line. | text |
 
-Text format: `YYYY-MM-DD HH:MM:SS  <profile|->  <state>  <kind>  <detail>`, in local time. With no event it prints `No events`.
+Text format: `YYYY-MM-DD HH:MM:SS  <profile|->  <state>  <kind>  <detail>`, in local time. With no event it prints `No events` (nothing with `--json`).
 
 | Code | Case |
 | --- | --- |
@@ -143,7 +143,7 @@ Asks the daemon to remove the kill switch, stop the tunnel and clear its markers
 | --- | --- |
 | `--yes` | No confirmation. Required when stdin is not a terminal. |
 
-Without `--yes`, the command asks you to type `yes`. Any other answer cancels. On success it prints `Kill switch removed and tunnel dropped.` followed by the state.
+Without `--yes`, the command asks you to type `yes`. Any other answer cancels. On success it prints `Kill switch removed and tunnel dropped.` followed by the state (or a warning on stderr if the state cannot be read; the exit code stays 0).
 
 | Code | Case |
 | --- | --- |

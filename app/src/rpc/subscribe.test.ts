@@ -46,6 +46,16 @@ test("subscribe: events, invalid notification ignored, onClose", async () => {
   expect(closed).toBe(1);
 });
 
+test("subscribe: no ack -> error and close", async () => {
+  server = createServer((c) => { conn = c; }); // accepts, never answers
+  await new Promise<void>((r) => server!.listen(sock, r));
+  const errors: Error[] = [];
+  let closed = 0;
+  subscribe(() => {}, { socket: sock, onError: (e) => errors.push(e), onClose: () => closed++ });
+  for (let i = 0; i < 70 && closed === 0; i++) await Bun.sleep(100); // ack timeout is 5 s
+  expect(errors.map((e) => e.message)).toEqual(["subscription ack timed out"]);
+}, 10_000);
+
 test("subscribe: line > 64 KiB -> error and close; daemon absent -> onClose", async () => {
   await serve();
   let closed = 0, opened = 0;

@@ -80,6 +80,44 @@ test("scope_learned -> pendingScope with diff, then acceptScope", async () => {
   h.store.stop();
 });
 
+test("act: a second action while busy is ignored, panic-off is not", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const h = harness({ profiles: [profile("a")], handlers: { up: () => gate.then(() => ({ ok: true })) } });
+  const first = h.store.toggle("a");
+  await tick();
+  expect(h.store.getState().busy).toBe("up");
+  await h.store.toggle("a"); // double key press: no second up
+  expect(methods(h).filter((m) => m === "up").length).toBe(1);
+  const panic = h.store.panicOff();
+  await tick();
+  expect(methods(h)).toContain("panic_off");
+  release();
+  await Promise.all([first, panic]);
+  expect(h.store.getState().busy).toBeNull();
+});
+
+test("refresh: an older refresh never overwrites a newer one", async () => {
+  const gates: (() => void)[] = [];
+  let n = 0;
+  const h = harness({
+    handlers: {
+      status: () => {
+        const me = ++n;
+        return new Promise((r) => gates.push(() => r(status({ state: me === 1 ? "armed" : "disarmed" }))));
+      },
+    },
+  });
+  const r1 = h.store.refresh();
+  const r2 = h.store.refresh();
+  await tick();
+  gates[1]!(); // newest answers first
+  await r2;
+  gates[0]!(); // stale answer arrives last
+  await r1;
+  expect(h.store.getState().status?.state).toBe("disarmed");
+});
+
 test("toggle: up without secrets, up with secrets (90 s), down if active, busy reset to null", async () => {
   const h = harness({ profiles: [profile("a"), profile("b", { has_secrets: true })] });
   const busy: any[] = [];

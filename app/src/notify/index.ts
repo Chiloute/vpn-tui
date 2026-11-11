@@ -61,16 +61,17 @@ export async function notifyLoop(o: NotifyOpts = {}): Promise<void> {
     await refresh();
     let opened = false;
     await new Promise<void>((resolve) => {
+      const onAbort = () => sub.close();
       const sub = subscribe(
         (e) => {
           const args = notifyArgs(e);
           if (args) send(args);
           void refresh();
         },
-        { socket: o.socket, onOpen: () => ((opened = true), void refresh()), onClose: resolve },
+        { socket: o.socket, onOpen: () => ((opened = true), void refresh()), onClose: () => (signal.removeEventListener("abort", onAbort), resolve()) },
       );
       if (signal.aborted) return sub.close();
-      signal.addEventListener("abort", () => sub.close(), { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
     });
     if (signal.aborted) break;
     if (opened) delay = 2000;

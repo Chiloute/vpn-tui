@@ -80,10 +80,13 @@ export function createStore(overrides: Partial<Deps> = {}) {
       ? e.code === -32001 ? `Access denied by the daemon: ${e.message}` : `Daemon error (${e.code}): ${e.message}`
       : e instanceof Error ? e.message : "unknown error";
 
+  let refreshSeq = 0;
   async function refresh(): Promise<void> {
+    const my = ++refreshSeq;
     try {
       const s = (await d.call("status", undefined, sock)) as unknown as Status;
       const { profiles } = (await d.call("list", undefined, sock)) as unknown as { profiles: Profile[] };
+      if (my !== refreshSeq) return; // a newer refresh is in flight: do not overwrite fresh state with this snapshot
       samples = { prev: samples.cur, cur: { rx: s.rx_bytes, tx: s.tx_bytes, at: now() } };
       d.writeLhost(s.lhost, () => {});
       set({ status: s, profiles, daemonReachable: true });
@@ -94,6 +97,7 @@ export function createStore(overrides: Partial<Deps> = {}) {
   }
 
   async function act<T>(kind: Exclude<Busy, null>, fn: () => Promise<T>, secrets: string[] = []): Promise<T | undefined> {
+    if (state.busy && kind !== "panic") return undefined; // one action at a time; panic-off always goes through
     set({ busy: kind, lastError: null });
     try {
       return await fn();
