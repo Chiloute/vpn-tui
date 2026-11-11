@@ -2,15 +2,15 @@ import "ilovetui/solid";
 import { afterEach, beforeAll, expect, test } from "bun:test";
 import { testRender } from "@opentui/solid";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { dismiss, notifications } from "ilovetui/context";
 import { resolveBindings } from "../help";
 import type { Profile } from "../store";
 import { fakeStore } from "./fake-store";
-import { completePath } from "./import-view";
+import { completePath, listEntries, pickEntry } from "./import-view";
 import { currentView, setCurrentView, Shell } from "./shell";
 import { registerTuiViews } from "./views";
 
@@ -40,7 +40,7 @@ const press = async (k: "enter" | "escape" | "tab" | "stab" | "ctrl+s" | "right"
   else if (k === "tab") m.pressTab();
   else if (k === "stab") m.pressTab({ shift: true });
   else if (k === "ctrl+s") m.pressKey("s", { ctrl: true });
-  else if (k === "right") m.pressArrow("right");
+  else if (k === "right" || k === "up" || k === "down") m.pressArrow(k);
   else m.pressKey(k);
   await frames();
 };
@@ -65,6 +65,43 @@ test("completePath completes a unique name and the common prefix", () => {
   expect(completePath(join(dir, "sou"))).toBe(join(dir, "sous") + "/");
   expect(completePath(join(dir, "th"))).toBe(join(dir, "thm-"));
   expect(completePath(join(dir, "zzz"))).toBe(join(dir, "zzz"));
+});
+
+test("listEntries filters on the typed prefix, directories first; pickEntry keeps the style", () => {
+  const { dir } = fixture("thm-a.ovpn", "x");
+  writeFileSync(join(dir, ".hidden"), "x");
+  mkdirSync(join(dir, "sous"));
+  expect(listEntries(dir + "/").entries).toEqual([{ name: "..", dir: true }, { name: "sous", dir: true }, { name: "thm-a.ovpn", dir: false }]);
+  expect(listEntries(join(dir, "th")).entries).toEqual([{ name: "thm-a.ovpn", dir: false }]);
+  expect(listEntries(join(dir, ".h")).entries).toEqual([{ name: ".hidden", dir: false }]);
+  expect(listEntries(join(dir, "nope") + "/").entries).toEqual([]);
+  expect(pickEntry(dir + "/", { name: "sous", dir: true })).toBe(join(dir, "sous") + "/");
+  expect(pickEntry(join(dir, "th"), { name: "thm-a.ovpn", dir: false })).toBe(join(dir, "thm-a.ovpn"));
+  expect(pickEntry(dir + "/", { name: "..", dir: true })).toBe(dirname(dir) + "/");
+  expect(pickEntry("", { name: "..", dir: true })).toBe(dirname(homedir()) + "/");
+  expect(pickEntry("~/", { name: ".config", dir: true })).toBe("~/.config/");
+});
+
+test("import: explorer picks a file with the arrows and Enter", async () => {
+  const { dir } = fixture("thm.ovpn", OVPN());
+  mkdirSync(join(dir, "sous"));
+  const s = fakeStore({ profiles: [prof()] });
+  await mount(s, sizes[0]!);
+  await press("i");
+  await type(dir + "/");
+  let f = frame();
+  expect(f).toContain("sous/");
+  expect(f).toContain("thm.ovpn");
+  await press("down"); // .. -> sous/
+  await press("enter");
+  expect(frame()).not.toContain("thm.ovpn"); // inside the empty sous/
+  await press("up"); // on ..
+  await press("enter");
+  await press("down"); await press("down"); // thm.ovpn
+  await press("enter");
+  f = frame();
+  expect(f).toContain("Type: openvpn");
+  expect(f).not.toContain("sous/"); // the explorer hides once the preview is shown
 });
 
 for (const size of sizes) {

@@ -66,7 +66,7 @@ export const views = {
     title: "Import",
     role: "Import a profile file (.ovpn or WireGuard) in three steps: path, preview, confirmation. Secrets go to the keyring, not to disk.",
     actions: [
-      "Type the path (~ accepted, Tab completes the name), then Enter to read the file and show the preview.",
+      "Type the path (~ accepted, Tab completes the name) or browse the list below it: Up/Down pick an entry, Enter opens a directory or reads the file and shows the preview.",
       "Adjust the name and the id, then Enter on \"Import\".",
     ],
     warnings: [
@@ -74,7 +74,8 @@ export const views = {
       "Secrets are never displayed.",
     ],
     commands: [
-      { name: "import.confirm", desc: "read / import", defaultKey: "return", shortHelp: true },
+      { name: "import.confirm", desc: "open / read / import", defaultKey: "return", shortHelp: true },
+      { name: "import.nav", desc: "browse", defaultKey: "up,down", shortHelp: true },
       { name: "import.next", desc: "complete / next", defaultKey: "tab", shortHelp: true },
       { name: "import.prev", desc: "previous field", defaultKey: "shift+tab" },
       { name: "import.cancel", desc: "cancel", defaultKey: "escape", shortHelp: true },

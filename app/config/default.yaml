@@ -21,6 +21,7 @@ keybinds:
   logs.page: "pageup,pagedown"
   logs.back: "escape"
   import.confirm: "return"
+  import.nav: "up,down"
   import.next: "tab"
   import.prev: "shift+tab"
   import.cancel: "escape"

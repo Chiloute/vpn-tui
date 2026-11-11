@@ -71,7 +71,8 @@ Import a profile file (.ovpn or WireGuard) in three steps: path, preview, confir
 
 | Key | Action |
 | --- | --- |
-| `Enter` | read / import |
+| `Enter` | open / read / import |
+| `↑ ↓` | browse |
 | `tab` | complete / next |
 | `shift+tab` | previous field |
 | `Esc` | cancel |
@@ -81,7 +82,7 @@ Import a profile file (.ovpn or WireGuard) in three steps: path, preview, confir
 | `L` | logs (global) |
 | `c` | copy LHOST (global) |
 
-- Type the path (~ accepted, Tab completes the name), then Enter to read the file and show the preview.
+- Type the path (~ accepted, Tab completes the name) or browse the list below it: Up/Down pick an entry, Enter opens a directory or reads the file and shows the preview.
 - Adjust the name and the id, then Enter on "Import".
 
 > Warning: A rejected file shows the exact parser or daemon message, line by line, and nothing is imported.
