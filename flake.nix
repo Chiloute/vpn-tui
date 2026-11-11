@@ -13,8 +13,6 @@
       nixpkgs.lib.genAttrs supportedSystems
       (system: f system (import nixpkgs {
         inherit system;
-        # PolyForm NC license is unfree for nixpkgs
-        config.allowUnfreePredicate = p: builtins.elem (nixpkgs.lib.getName p) ["vpn-tuid" "vpn-tui"];
       }));
     mk = pkgs: let
       app = pkgs.callPackage ./nix/app.nix {};

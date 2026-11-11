@@ -139,7 +139,7 @@ nix build .#vpn-tui
 nix build            # both, in one output
 ```
 
-The flake supports `x86_64-linux` and `aarch64-linux`. The packages are marked unfree for nixpkgs because the licence is PolyForm Noncommercial; `flake.nix` allows the two package names.
+The flake supports `x86_64-linux` and `aarch64-linux`.
 
 The Go vendor hash (`nix/daemon.nix`, `vendorHash`) and the hash of the Bun dependencies (`nix/app.nix`, `outputHash`) are fixed values. Update them after any change to `go.mod`, `go.sum` or `app/bun.lock`: build once with a wrong hash and copy the hash Nix reports.
 

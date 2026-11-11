@@ -53,12 +53,7 @@ in {
     meta = {
       description = "vpn-tui TUI/CLI client";
       homepage = "https://github.com/Chiloute/vpn-tui";
-      license = {
-        fullName = "PolyForm Noncommercial License 1.0.0";
-        url = "https://polyformproject.org/licenses/noncommercial/1.0.0";
-        free = false;
-        redistributable = true;
-      };
+      license = lib.licenses.mit;
       mainProgram = "vpn-tui";
       platforms = ["x86_64-linux" "aarch64-linux"];
     };

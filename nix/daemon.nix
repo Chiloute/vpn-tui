@@ -16,13 +16,7 @@ buildGoModule rec {
   meta = {
     description = "vpn-tui daemon (OpenVPN/WireGuard, kill switch)";
     homepage = "https://github.com/Chiloute/vpn-tui";
-    # polyform-nc absent de nixpkgs
-    license = {
-      fullName = "PolyForm Noncommercial License 1.0.0";
-      url = "https://polyformproject.org/licenses/noncommercial/1.0.0";
-      free = false;
-      redistributable = true;
-    };
+    license = lib.licenses.mit;
     mainProgram = "vpn-tuid";
     platforms = lib.platforms.linux;
   };

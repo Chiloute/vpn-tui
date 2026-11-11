@@ -112,6 +112,6 @@ The kill switch works at the firewall, not at the routing table: routes pushed b
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Commercial use needs the author's prior agreement.
+[MIT](LICENSE).
 
 Required Notice: Copyright 2026 Chiloute (https://github.com/Chiloute/vpn-tui)

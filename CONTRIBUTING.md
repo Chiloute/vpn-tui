@@ -51,4 +51,4 @@ Do not open a public issue for a vulnerability. Report it privately. TODO: add t
 
 ## Licence
 
-By contributing, you agree that your contribution is distributed under the project licence, [PolyForm Noncommercial 1.0.0](LICENSE).
+By contributing, you agree that your contribution is distributed under the project licence, [MIT](LICENSE).
