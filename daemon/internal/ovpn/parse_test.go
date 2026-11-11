@@ -50,6 +50,9 @@ func TestAccepted(t *testing.T) {
 			if !reflect.DeepEqual(c, c2) || !bytes.Equal(c.Sanitized, c2.Sanitized) {
 				t.Fatal("not idempotent")
 			}
+			if tc.file == "htb.ovpn" && !bytes.Contains(c.Sanitized, []byte("\ncomp-lzo no\n")) {
+				t.Fatalf("bare comp-lzo not rewritten:\n%s", c.Sanitized)
+			}
 		})
 	}
 }
@@ -142,7 +145,6 @@ func TestRejected(t *testing.T) {
 		"comp-lzo yes":          "comp-lzo yes",
 		"cipher none":           "cipher none",
 		"auth none":             "auth none",
-		"comp-lzo bare":         "comp-lzo",
 		"allow-compression yes": "allow-compression asym",
 		"verb alpha":            "verb abc",
 		"verb negative":         "verb -1",

@@ -538,6 +538,10 @@ func Parse(content []byte) (*Config, error) {
 			out.WriteString(line + "\n")
 			continue
 		}
+		if d == "comp-lzo" && (len(args) == 0 || len(args) == 1 && args[0] == "adaptive") {
+			out.WriteString("comp-lzo no\n") // HTB packs: keep the LZO framing the server expects, never compress (VORACLE)
+			continue
+		}
 		spec, ok := allowed[d]
 		if !ok {
 			return nil, rej(d, reasonNotAllowed)
