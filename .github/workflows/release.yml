@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build linux/${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      # the tag is the release; app/package.json is the source of the version
+      - name: Check tag against app/package.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "$TAG" = "v$(jq -r .version app/package.json)"
+
+      - name: Tests
+        run: |
+          go test ./...
+          cd app && bun install --frozen-lockfile && bun test
+
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          v="${VERSION#v}"
+          mkdir -p dist
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$v" -o dist/vpn-tuid ./daemon/cmd/vpn-tuid
+          (cd app && bun run scripts/build.ts ../dist/vpn-tui)
+          tar -C dist -czf "vpn-tui_linux_${{ matrix.arch }}.tar.gz" vpn-tui vpn-tuid
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: vpn-tui_linux_${{ matrix.arch }}
+          path: vpn-tui_linux_${{ matrix.arch }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz > checksums.txt
+          # still beta: v0.x releases are marked prerelease, as in jwt-tui
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease ./*.tar.gz checksums.txt
