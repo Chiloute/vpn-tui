@@ -1,10 +1,11 @@
 {
   lib,
+  version,
   buildGoModule,
 }:
 buildGoModule rec {
   pname = "vpn-tuid";
-  version = "0.0.0";
+  inherit version;
   src = lib.cleanSource ../.;
   vendorHash = "sha256-3O+215G9KuNSYjFVDpDMyXrXNX3tYxFb+2zRnSz9IUw=";
   subPackages = ["daemon/cmd/vpn-tuid"];

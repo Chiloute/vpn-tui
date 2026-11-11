@@ -6,6 +6,7 @@ import { detectType, extractSecrets, slugify } from "../import";
 import { deleteSecrets, loadSecrets, storeSecrets } from "../keyring";
 import { writeLhost } from "../lhost";
 import { notifyCmd } from "../notify";
+import { version } from "../version";
 
 const USAGE = `Usage: vpn-tui status [--json]
         vpn-tui import <file> [--name NAME] [--id ID]
@@ -16,6 +17,7 @@ const USAGE = `Usage: vpn-tui status [--json]
         vpn-tui logs [--since 24h|7d|30m|DATE_RFC3339] [--json]
         vpn-tui panic-off [--yes]
         vpn-tui notify   (subscribes to events, sends notify-send notifications, updates LHOST)
+        vpn-tui --version
         vpn-tui --help`;
 
 type Status = {
@@ -246,6 +248,7 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
       options: {
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
+        version: { type: "boolean", short: "v" },
         name: { type: "string" },
         id: { type: "string" },
         since: { type: "string" },
@@ -259,6 +262,10 @@ export async function main(argv: string[], io: IO, socket?: string): Promise<num
   const { values, positionals } = parsed;
   if (values.help) {
     io.out(USAGE);
+    return 0;
+  }
+  if (values.version) {
+    io.out(version);
     return 0;
   }
   if (positionals.length === 0) {

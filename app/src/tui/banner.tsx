@@ -2,6 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import { theme } from "ilovetui";
 import { Badge } from "ilovetui/components";
 import { Show } from "solid-js";
+import { version } from "../version";
 import { useTui } from "./ctx";
 
 const fmtRate = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}M` : n >= 1024 ? `${(n / 1024).toFixed(1)}K` : `${Math.round(n)}B`) + "/s";
@@ -39,6 +40,8 @@ export function Banner() {
       <Show when={b().rate}>
         {(r) => <text fg={theme.muted} wrapMode="none" flexShrink={0}>{`↓${fmtRate(r().rx)} ↑${fmtRate(r().tx)}`}</text>}
       </Show>
+      <box flexGrow={1} />
+      <text fg={theme.muted} wrapMode="none" flexShrink={0}>{`v${version}`}</text>
     </box>
   );
 }

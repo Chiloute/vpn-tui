@@ -1,5 +1,6 @@
 {
   lib,
+  version,
   stdenvNoCC,
   bun,
   makeWrapper,
@@ -30,7 +31,7 @@ in {
   inherit nodeModules;
   package = stdenvNoCC.mkDerivation {
     pname = "vpn-tui";
-    version = "0.0.0";
+    inherit version;
     src = root;
     sourceRoot = "source/app"; # the code imports ../../../proto
     nativeBuildInputs = [bun makeWrapper];

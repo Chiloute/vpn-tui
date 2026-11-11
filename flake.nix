@@ -8,6 +8,8 @@
     nixpkgs,
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux"];
+    # single source: app/package.json (also read by the client for --version)
+    version = (builtins.fromJSON (builtins.readFile ./app/package.json)).version;
 
     forAllSystems = f:
       nixpkgs.lib.genAttrs supportedSystems
@@ -15,9 +17,9 @@
         inherit system;
       }));
     mk = pkgs: let
-      app = pkgs.callPackage ./nix/app.nix {};
+      app = pkgs.callPackage ./nix/app.nix {inherit version;};
     in rec {
-      vpn-tuid = pkgs.callPackage ./nix/daemon.nix {};
+      vpn-tuid = pkgs.callPackage ./nix/daemon.nix {inherit version;};
       vpn-tui = app.package;
       default = pkgs.symlinkJoin {
         name = "vpn-tui-all";

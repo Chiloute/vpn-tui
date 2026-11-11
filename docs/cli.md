@@ -16,10 +16,11 @@ vpn-tui lhost
 vpn-tui logs [--since 24h|7d|30m|RFC3339_DATE] [--json]
 vpn-tui panic-off [--yes]
 vpn-tui notify
+vpn-tui --version
 vpn-tui --help
 ```
 
-Options are parsed globally: `--json`, `--help` (`-h`), `--name`, `--id`, `--since`, `--yes`. An unknown option or command prints the usage on stderr and exits with 1. `--help` prints the usage and exits with 0.
+Options are parsed globally: `--json`, `--help` (`-h`), `--version` (`-v`), `--name`, `--id`, `--since`, `--yes`. An unknown option or command prints the usage on stderr and exits with 1. `--help` prints the usage and exits with 0. `--version` prints the version and exits with 0.
 
 Every command that talks to the daemon uses the socket `/run/vpn-tui/vpn-tuid.sock`, or the one in the `VPN_TUI_SOCKET` environment variable. A request times out after 5 s, except `up` (90 s).
 
