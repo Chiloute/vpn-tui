@@ -106,6 +106,14 @@ cd app && bun run gen:keys
 
 The command rewrites `docs/keys.md`. Commit the result with the change to the table.
 
+## Regenerating the demo
+
+The README animation `.github/assets/demo.gif` is recorded with [VHS](https://github.com/charmbracelet/vhs) from `.github/assets/demo.tape`. It drives the real `vpn-tui` on your machine: the daemon must be running and the first profile in the list must connect. Profile names and addresses appear in the recording.
+
+```bash
+nix run --inputs-from . nixpkgs#vhs -- .github/assets/demo.tape
+```
+
 ## Building
 
 Daemon:

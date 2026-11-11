@@ -7,6 +7,8 @@ It has two parts:
 - `vpn-tuid`: a root daemon written in Go. It parses and stores profiles, starts the tunnels, applies the nftables rules and runs the state machine.
 - `vpn-tui`: a TUI and CLI written in TypeScript for Bun. It runs in your session, keeps secrets in the Secret Service and talks to the daemon over a Unix socket.
 
+<img alt="demo" src="./.github/assets/demo.gif" width="700" />
+
 > [!WARNING]
 > Use this tool only on systems and networks you are explicitly and in writing authorised to test, within the agreed scope. The author declines all responsibility for unauthorised or illegal use.
 
