@@ -57,7 +57,7 @@ flowchart LR
 
 The daemon calls neither `nft` nor `iptables`. It talks to the kernel through netlink libraries. The only external programs it starts are `openvpn` and `resolvectl`.
 
-Only one profile is active at a time. The daemon exits after `--idle-timeout` with no connection, but never while a VPN is active or a lock is in place. Exiting (restart, rebuild) never removes the firewall: the table, the tunnel and the markers stay in place and the next start picks them up (see [Startup reconciliation](#startup-reconciliation)). Only the `down` and `panic_off` methods and `vpn-tuid --panic-off` disarm.
+Only one profile is active at a time. The daemon exits after `--idle-timeout` with no connection, but never while a VPN is active or a lock is in place. Exiting (restart, rebuild) never removes the firewall: the table, the tunnel and the markers stay in place and the next start picks them up (see [Startup reconciliation](#startup-reconciliation)). OpenVPN runs in its own process group and the NixOS unit uses `KillMode=process`, so a daemon stop does not take the tunnel down with it. Only the `down` and `panic_off` methods and `vpn-tuid --panic-off` disarm.
 
 ## State machine
 
@@ -93,15 +93,16 @@ stateDiagram-v2
 
 Transitions, with their source in `daemon/internal/state/`:
 
-- **Up with kill switch** (`Manager.Up`): `Lock` with the profile endpoints, then the tunnel is started, then `Arm`. If the tunnel fails, the state stays `locked` (the firewall is not removed) until `down`.
+- **Up with kill switch** (`Manager.Up`): `Lock` with the profile endpoints, then the tunnel is started, then `Arm`. If the tunnel fails, the state stays `locked` (the firewall is not removed) until `down`. A `down` or `panic_off` received while the tunnel is still connecting aborts the connection at once.
+- **Up from `locked`**: the lock blocks DNS, so the remote names of a profile cannot be resolved. Retrying the same profile reuses the endpoints resolved before the lock (or those of the marker). Bringing up another profile whose remote is a hostname needs `down` first. An `up` that fails before touching the firewall never records `disarmed` while the table is in place.
 - **Up without kill switch**: no firewall. On success the state is `armed`, on failure `disarmed`.
 - **Switching from A to B without disarming**: when A is armed with the kill switch on, `Up(B)` first applies `Lock` with the endpoints of A and B together, then stops the tunnel of A, then locks for B, starts B and arms. The table is replaced atomically at each step and never removed, so the host is never open between the two profiles. If A has no kill switch, there is no firewall to keep. If B has none, the lock applied for A is released once B is up.
 - **Drop**: a watcher detects a dead tunnel (interface gone, OpenVPN exited or reconnecting, WireGuard without handshake while packets are sent). With the kill switch on, the daemon applies `Lock` and moves to `locked`; otherwise it moves to `reconnecting`. It emits `drop`.
-- **Reconnection**: up to `--reconnect-max-attempts` attempts (default 10). Attempt `a` waits `1 s × 2^(a-1)`, capped at `--reconnect-max-backoff` (default 60 s). The secrets come from daemon memory. During an attempt the state is `reconnecting`; the firewall is not touched. A successful attempt re-arms and emits `up`.
+- **Reconnection**: up to `--reconnect-max-attempts` attempts (default 10). Attempt `a` waits `1 s × 2^(a-1)`, capped at `--reconnect-max-backoff` (default 60 s). The secrets come from daemon memory. During an attempt the state is `reconnecting`; the firewall is not touched. A failed attempt emits `error` with the cause. A successful attempt re-arms and emits `up`. An `up` of another profile during an attempt waits (20 s at most) for the attempt to release the interface before starting.
 - **Exhausted attempts**: with the kill switch on, the state stays `locked` until `down` or `panic_off` (event `lock`). Without it, the state becomes `disarmed`.
 - **No secrets** (the daemon restarted while armed, so the secrets are gone): a drop leads to `locked` with the kill switch on, `disarmed` without it. No reconnection is attempted.
-- **`down`**: stops the tunnel, removes the table, removes the marker. If one step fails, the state becomes `locked`.
-- **`panic_off`**: cancels any reconnection, stops the tunnel (3 s limit), removes the table, removes the marker, wipes the secrets. The state is `disarmed`.
+- **`down`**: stops the tunnel, removes the table, removes the marker. If one step fails, the daemon applies `Lock` and the state becomes `locked`.
+- **`panic_off`**: cancels any reconnection, stops the tunnel (3 s limit), removes the table, removes the marker, drops the secrets. The state is `disarmed`.
 - **Up of the profile already `armed`**: refused (error `-32004`, busy).
 
 ## What `up` does
@@ -227,7 +228,7 @@ Before accepting any connection, the daemon compares the persisted state (`/run/
 | not active | absent | absent | | none | `clean` |
 | not active | present | any | | `Lock` (endpoints from the marker; none if there is no marker) | `locked` |
 | not active | absent | present | | delete the interface | `orphan_cleaned` |
-| `armed` | any | present | OpenVPN PID alive (or WireGuard), profile exists, adoption succeeds, endpoints resolve, `Arm` succeeds | re-attach to the tunnel, `Arm` | `resumed` |
+| `armed` | any | present | OpenVPN PID alive (or WireGuard), profile exists, adoption succeeds, endpoints known (marker, else resolved), `Arm` succeeds | re-attach to the tunnel, `Arm` | `resumed` |
 | active, any other case | any | any | | `Lock` | `locked` |
 | any | | | firewall or interface deletion error | try `Lock`, return the error | `locked` |
 

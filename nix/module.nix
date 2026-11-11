@@ -149,6 +149,8 @@ in {
         {
           Type = "simple";
           ExecStart = lib.concatStringsSep " " ([bin] ++ args);
+          # Keep openvpn alive across a daemon stop/restart: the tunnel is adopted at the next start.
+          KillMode = "process";
         }
         // hardening;
     };

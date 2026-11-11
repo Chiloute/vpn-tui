@@ -14,6 +14,10 @@ import (
 const (
 	orphanIface  = "vpntui0"
 	noSecretsMsg = "secrets unavailable after daemon restart"
+	// loopStopWait bounds how long Up waits for a cancelled reconnection attempt to finish its teardown
+	// (OpenVPN Stop escalates over 3 x stopGrace). shortcut: on timeout the new tunnel may still race
+	// the old files or vpntui0; make Driver.Up fail fast on a busy interface if that ever shows up.
+	loopStopWait = 20 * time.Second
 )
 
 // marker is the persistent "armed" file; it never contains secrets.
@@ -75,6 +79,9 @@ func (m *Manager) sleep(ctx context.Context, d time.Duration) error {
 
 // step runs fn under mu unless the session was cancelled or replaced; it reports whether fn ran.
 func (m *Manager) step(s *session, fn func()) bool {
+	if s.ctx.Err() != nil { // do not queue behind an Up that is waiting for this loop to end
+		return false
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.smu.Lock()
@@ -94,6 +101,8 @@ func (m *Manager) watch(s *session) {
 		return
 	}
 	d := s.derive(nil)
+	d.done = make(chan struct{})
+	defer close(d.done)
 	spec := Spec{Profile: s.p, Iface: s.iface, Endpoints: s.eps}
 	var reconnect bool
 	if !m.step(s, func() {
@@ -147,6 +156,7 @@ func (m *Manager) reconnect(s *session) {
 			if s.ctx.Err() != nil {
 				return
 			}
+			m.emit("error", fmt.Sprintf("attempt %d/%d: %v", a, max, err))
 			continue
 		}
 		done := false
@@ -206,6 +216,9 @@ func (m *Manager) PanicOff() error {
 	m.gen.Add(1)
 	m.smu.Lock()
 	s := m.sess
+	if m.upCancel != nil {
+		m.upCancel()
+	}
 	m.smu.Unlock()
 	if s != nil {
 		s.stop()
@@ -378,8 +391,10 @@ func (m *Manager) Reconcile(ctx context.Context, k Kernel, get func(id string) (
 	if !ok {
 		return lock(nil)
 	}
-	eps, err := m.Drivers[p.Type].Endpoints(ctx, p)
-	if err != nil {
+	var eps []Endpoint
+	if mk, err := m.readMarker(); err == nil && mk.Profile == p.ID && len(mk.Endpoints) > 0 {
+		eps = mk.Endpoints // the tunnel is connected to these; a fresh DNS answer may differ
+	} else if eps, err = m.Drivers[p.Type].Endpoints(ctx, p); err != nil {
 		return lock(err)
 	}
 	tun, info, err := drv.Adopt(ctx, p, pers.Iface, pers.PID)

@@ -76,7 +76,7 @@ The parsers live in `daemon/internal/ovpn/parse.go` and `daemon/internal/wg/pars
 | `resolv-retry` | `infinite` or an integer |
 | `remote-cert-tls` | `server` or `client` |
 | `key-direction` | `0` or `1` |
-| `comp-lzo`, `allow-compression` | only `no` |
+| `comp-lzo`, `allow-compression` | only `no`; a bare `comp-lzo` or `comp-lzo adaptive` (HackTheBox packs) is rewritten to `comp-lzo no` |
 | `verify-x509-name` | a safe token, optional type `name`, `name-prefix` or `subject` |
 | `cipher`, `auth` | a safe token, not `none` |
 | `data-ciphers`, `data-ciphers-fallback`, `tls-cipher`, `tls-version-min` | safe tokens |
@@ -134,7 +134,7 @@ The daemon builds the interface and the routing itself, through netlink. For a f
 1. **At import**, the client extracts the secrets before anything is sent: the `<auth-user-pass>` block of OpenVPN, `PrivateKey` and `PresharedKey` of WireGuard. The daemon never receives them at import, and rejects a file that still contains them.
 2. **In the keyring**, the client stores them with `secret-tool store`. The secret goes through stdin, not through arguments. The entry carries `service=vpn-tui` and `profile=<id>`.
 3. **At `up`**, the client reads them back and sends them in `up.params.secrets`. This is the only place where secrets travel on the socket.
-4. **In the daemon**, they stay in memory only, in the active session, so that a reconnection can reuse them. They are wiped by `down`, `panic_off` and when the reconnection attempts run out. They are not written to `state.json`, to the marker or to the journal. The type that holds them prints `[redacted]`.
+4. **In the daemon**, they stay in memory only, in the active session, so that a reconnection can reuse them. `down`, `panic_off` and exhausted reconnection attempts drop the references (Go strings are not zeroed in place). They are not written to `state.json`, to the marker or to the journal. The type that holds them prints `[redacted]`.
 5. **OpenVPN** reads credentials from a file `/run/vpn-tui/auth-<id>`, created with `O_EXCL` and mode 0600 in a 0700 directory. The file is deleted as soon as the start returns, whether it succeeded or not. A user name or password containing a line break is refused. OpenVPN output lines that contain the user name or password are replaced by `[redacted]`, and so is the `auth-token`.
 6. **WireGuard** keys go to the kernel through netlink. No file is written.
 

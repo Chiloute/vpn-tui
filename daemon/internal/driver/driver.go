@@ -89,8 +89,13 @@ func newTunnel(own func(context.Context) <-chan struct{}, stop func() error, sta
 		}
 		close(out)
 		time.Sleep(teardownDelay)
+		if ctx.Err() != nil { // Down already ran: a second stop would revert the DNS of the next tunnel
+			return
+		}
 		if safe == nil || safe() {
-			stop() // idempotent; error irrelevant here
+			if err := stop(); err != nil {
+				slog.Warn("tunnel: teardown after death", "err", err)
+			}
 		}
 	}()
 	return &tunnel{stop: stop, stats: stats, dead: out, cancel: cancel}

@@ -264,11 +264,71 @@ func TestDown(t *testing.T) {
 	if err := e.m.Down(); err != nil {
 		t.Fatal(err)
 	}
-	eq(t, e.l.get(), []string{"a.Down", "a.Down", "Disarm()"})
+	eq(t, e.l.get(), []string{"a.Down", "Lock(a:1.1.1.1)", "a.Down", "Disarm()"}) // a failed down locks for real
 	if e.m.Status().State != Disarmed || e.m.Active() {
 		t.Fatal("want disarmed")
 	}
 	eq(t, kinds(e.ch), []string{"up", "error", "down"})
+}
+
+// failEpsDrv fails Endpoints for profile b only.
+type failEpsDrv struct{ *fakeDrv }
+
+func (d failEpsDrv) Endpoints(ctx context.Context, p *profile.Profile) ([]Endpoint, error) {
+	if p.ID == "b" {
+		return nil, errors.New("no server address resolved")
+	}
+	return d.fakeDrv.Endpoints(ctx, p)
+}
+
+func TestFailedSwitchKeepsWatchingA(t *testing.T) {
+	e := setup(t)
+	e.m.Drivers["openvpn"] = failEpsDrv{e.drv["openvpn"]}
+	ctx := context.Background()
+	if err := e.m.Up(ctx, prof("a", true), Secrets{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.Up(ctx, prof("b", true), Secrets{}); err == nil {
+		t.Fatal("want error")
+	}
+	e.l.c = nil
+	close(e.drv["openvpn"].last.dead) // A drops after the failed switch: it must still lock
+	deadline := time.Now().Add(2 * time.Second)
+	for e.m.Status().State != Locked && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st := e.m.Status(); st.State != Locked || st.Profile != "a" {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestUpFromLockedReusesEndpoints(t *testing.T) {
+	e := setup(t)
+	e.m.Drivers["openvpn"] = failEpsDrv{e.drv["openvpn"]}
+	e.drv["openvpn"].fail = true
+	ctx := context.Background()
+	p := prof("b", true)
+	if err := e.m.Up(ctx, p, Secrets{}); err == nil {
+		t.Fatal("want error")
+	}
+	if e.m.Status().State != Disarmed {
+		t.Fatalf("%+v", e.m.Status())
+	}
+	// locked with known endpoints (restore-lock marker): a retry of the same profile must not need DNS
+	s, spec := markerSession(&markerFile{Profile: "b", Endpoints: []Endpoint{{IP: netip.MustParseAddr("2.2.2.2"), Port: 1, Proto: "udp"}}})
+	e.m.lockdown(spec, s)
+	e.drv["openvpn"].fail = false
+	e.l.c = nil
+	if err := e.m.Up(ctx, p, Secrets{}); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, e.l.get(), []string{"Lock(b:2.2.2.2)", "Lock(b:2.2.2.2)", "Arm(b:2.2.2.2@tun-b)"}) // union lock, then B's lock
+	// and a failure under lock never records disarmed over the live table
+	e.m.lockdown(spec, nil)
+	e.m.Drivers["openvpn"] = failEpsDrv{e.drv["openvpn"]}
+	if err := e.m.Up(ctx, prof("b", true), Secrets{}); err == nil || e.m.Status().State != Locked {
+		t.Fatalf("%v %+v", err, e.m.Status())
+	}
 }
 
 func TestNoKillswitch(t *testing.T) {

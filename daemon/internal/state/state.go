@@ -109,6 +109,7 @@ type session struct {
 	pid     int
 	tun     Tunnel // nil when the tunnel never came up or is dead
 	closing atomic.Bool
+	done    chan struct{}   // closed when the reconnection loop run on this session has returned; nil if none
 	ctx     context.Context // cancelled by Down/PanicOff/Up of another profile: stops reconnection
 	cancel  context.CancelFunc
 	sec     *Secrets // memory only; nil once wiped or after a daemon restart
@@ -125,7 +126,7 @@ func (s *session) stop() { s.cancel() }
 // derive copies s with another tunnel (nil = dead), sharing ctx and secrets.
 func (s *session) derive(tun Tunnel) *session {
 	return &session{p: s.p, eps: s.eps, iface: s.iface, lhost: s.lhost, scope: s.scope, pid: s.pid,
-		tun: tun, ctx: s.ctx, cancel: s.cancel, sec: s.sec}
+		tun: tun, ctx: s.ctx, cancel: s.cancel, sec: s.sec, done: s.done}
 }
 
 func (s *session) ks() bool { return s.p.Killswitch.Enabled }
@@ -145,8 +146,9 @@ type Manager struct {
 	DeleteIface  func(string) error                               // used by Reconcile for orphan interfaces
 	PanicTimeout time.Duration                                    // bound on tunnel Down in PanicOff (default 3s)
 
-	attempt, max int          // protected by smu
-	gen          atomic.Int64 // bumped by every Up/Down/PanicOff; stale commits are dropped
+	attempt, max int                // protected by smu
+	gen          atomic.Int64       // bumped by every Up/Down/PanicOff; stale commits are dropped
+	upCancel     context.CancelFunc // protected by smu; aborts the driver Up in flight (Down/PanicOff)
 
 	mu    sync.Mutex // serializes Up/Down
 	smu   sync.Mutex // protects the fields below
@@ -233,6 +235,13 @@ func (m *Manager) fail(state string, s *session, err error) error {
 	return err
 }
 
+// lockFail applies the lock for s (in doubt, lock for real), records the error and returns it.
+func (m *Manager) lockFail(s *session, err error) error {
+	m.lockdown(Spec{Profile: s.p, Iface: s.iface, Endpoints: s.eps}, s)
+	m.emit("error", err.Error())
+	return err
+}
+
 func union(a, b []Endpoint) []Endpoint {
 	out := slices.Clone(a)
 	for _, e := range b {
@@ -247,6 +256,9 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	gen := m.gen.Add(1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.gen.Load() != gen { // Down/PanicOff ran while we waited for mu
+		return ErrCancelled
+	}
 
 	m.smu.Lock()
 	prev, cur := m.sess, m.state
@@ -254,16 +266,16 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	if prev != nil && cur == Armed && prev.p.ID == p.ID {
 		return ErrAlreadyActive
 	}
-	if prev != nil {
-		prev.stop() // end any reconnection loop before touching the firewall
-	}
 	drv, ok := m.Drivers[p.Type]
 	if !ok {
 		return fmt.Errorf("no driver for type %q", p.Type)
 	}
 	eps, err := drv.Endpoints(ctx, p)
+	if err != nil && prev != nil && prev.p.ID == p.ID && len(prev.eps) > 0 {
+		eps, err = prev.eps, nil // the lock blocks DNS: reuse the endpoints resolved before it
+	}
 	if err != nil {
-		if prev != nil { // A untouched; just report
+		if prev != nil || cur == Locked { // nothing touched; never record disarmed over a live table
 			m.emit("error", err.Error())
 			return err
 		}
@@ -274,6 +286,13 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 	locked := cur == Locked // did we leave a firewall lock in place?
 
 	if prev != nil {
+		prev.stop()           // end any reconnection loop before touching the firewall
+		if prev.done != nil { // let an attempt in flight release vpntui0 and the OpenVPN files
+			select {
+			case <-prev.done:
+			case <-time.After(loopStopWait):
+			}
+		}
 		if prev.ks() {
 			a := Spec{Profile: prev.p, Iface: prev.iface, Endpoints: union(prev.eps, eps)}
 			if err := m.FW.Lock(a); err != nil {
@@ -287,9 +306,7 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 			prev.closing.Store(true)
 			if err := prev.tun.Down(); err != nil {
 				prev.closing.Store(false)
-				m.set(Locked, prev)
-				m.emit("error", err.Error())
-				return err
+				return m.lockFail(prev, err)
 			}
 		}
 		if locked {
@@ -307,7 +324,15 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 		m.set(Locked, next)
 	}
 
-	tun, info, err := drv.Up(ctx, p, sec, eps)
+	dctx, dcancel := context.WithCancel(ctx)
+	m.smu.Lock()
+	m.upCancel = dcancel
+	m.smu.Unlock()
+	tun, info, err := drv.Up(dctx, p, sec, eps)
+	m.smu.Lock()
+	m.upCancel = nil
+	m.smu.Unlock()
+	dcancel()
 	if m.gen.Load() != gen { // PanicOff/Down/another Up ran meanwhile: touch nothing
 		if err == nil {
 			if derr := tun.Down(); derr != nil {
@@ -325,7 +350,8 @@ func (m *Manager) Up(ctx context.Context, p *profile.Profile, sec Secrets) error
 		}
 		return m.fail(Disarmed, nil, err)
 	}
-	next.tun, next.iface, next.pid = tun, info.Iface, info.PID
+	next = next.derive(tun) // never mutate a published session: Status reads it under smu only
+	next.iface, next.pid = info.Iface, info.PID
 	if info.LHOST.IsValid() {
 		next.lhost = info.LHOST.String()
 	}
@@ -359,6 +385,9 @@ func (m *Manager) Down() error {
 	if m.sess != nil {
 		m.sess.stop() // unblock a reconnection loop before waiting for mu
 	}
+	if m.upCancel != nil {
+		m.upCancel() // and a connection in progress
+	}
 	m.smu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -374,12 +403,15 @@ func (m *Manager) Down() error {
 			s.closing.Store(true)
 			if err := s.tun.Down(); err != nil {
 				s.closing.Store(false)
-				return m.fail(Locked, s, err)
+				return m.lockFail(s, err)
 			}
 		}
 	}
 	if err := m.FW.Disarm(); err != nil {
-		return m.fail(Locked, s, err)
+		if s == nil {
+			return m.fail(Locked, nil, err)
+		}
+		return m.lockFail(s, err)
 	}
 	m.removeMarker()
 	m.emitDown(s)
@@ -431,6 +463,10 @@ func writeAtomic(path string, v any) error {
 	}
 	defer os.Remove(f.Name())
 	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil { // the marker must survive a power loss: it drives --restore-lock
 		f.Close()
 		return err
 	}

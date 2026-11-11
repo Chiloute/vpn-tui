@@ -278,7 +278,7 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 			os.Remove(p.auth)
 		}
 		if err != nil {
-			p.Stop()
+			err = errors.Join(err, p.Stop())
 		}
 	}()
 	if err = os.MkdirAll(o.RunDir, 0o700); err != nil {
@@ -296,6 +296,7 @@ func Start(ctx context.Context, o StartOpts) (_ *Process, err error) {
 
 	cmd := exec.Command(o.Bin, buildArgs(o, p.conf, p.sock, p.auth)...)
 	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, testEnv...) // nothing else leaks to OpenVPN
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}               // survives the daemon's Ctrl-C/SIGTERM (adopted at restart)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	if err = cmd.Start(); err != nil {

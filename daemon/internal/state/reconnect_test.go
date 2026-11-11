@@ -187,7 +187,7 @@ func TestReconnectSuccess(t *testing.T) {
 	r.d.failures = 2
 	r.d.mu.Unlock()
 	close(r.d.last().dead)
-	wait(t, func() bool { return r.m.Status().State == Armed && r.d.ups.Load() == 4 && len(r.ch) >= 6 }) // the up event follows the state change
+	wait(t, func() bool { return r.m.Status().State == Armed && r.d.ups.Load() == 4 && len(r.ch) >= 8 }) // the up event follows the state change
 	r.dmu.Lock()
 	defer r.dmu.Unlock()
 	if len(r.delays) != 3 || r.delays[0] != time.Second || r.delays[1] != 2*time.Second || r.delays[2] != 4*time.Second {
@@ -197,7 +197,7 @@ func TestReconnectSuccess(t *testing.T) {
 		t.Fatal(r.atts)
 	}
 	eq(t, r.l.get(), []string{"Lock(a:1.1.1.1)", "Arm(a:1.1.1.1@tun-a)", "Lock(a:1.1.1.1)", "Arm(a:1.1.1.1@tun-a)"})
-	eq(t, kinds(r.ch), []string{"up", "drop", "reconnect", "reconnect", "reconnect", "up"})
+	eq(t, kinds(r.ch), []string{"up", "drop", "reconnect", "error", "reconnect", "error", "reconnect", "up"})
 	if _, err := os.Stat(r.m.MarkerPath); err != nil {
 		t.Fatal(err)
 	}
@@ -519,6 +519,67 @@ func (d blockUpDrv) Up(ctx context.Context, p *profile.Profile, s Secrets, e []E
 	d.in <- struct{}{}
 	<-d.release
 	return d.scriptDrv.Up(ctx, p, s, e)
+}
+
+// ctxUpDrv blocks Up until its ctx is cancelled (a server that never answers).
+type ctxUpDrv struct {
+	*scriptDrv
+	in chan struct{}
+}
+
+func (d ctxUpDrv) Up(ctx context.Context, p *profile.Profile, s Secrets, e []Endpoint) (Tunnel, Info, error) {
+	d.in <- struct{}{}
+	<-ctx.Done()
+	return nil, Info{}, ctx.Err()
+}
+
+func TestDownInterruptsUp(t *testing.T) {
+	for _, ks := range []bool{true, false} {
+		r := newRig(t, 0)
+		d := ctxUpDrv{r.d, make(chan struct{}, 1)}
+		r.m.Drivers["openvpn"] = d
+		res := make(chan error, 1)
+		go func() { res <- r.m.Up(context.Background(), prof("a", ks), Secrets{}) }()
+		<-d.in
+		start := time.Now()
+		if err := r.m.Down(); err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(start) > time.Second {
+			t.Fatal("down waited for the connect timeout")
+		}
+		if err := <-res; !errors.Is(err, ErrCancelled) {
+			t.Fatalf("ks=%v: %v", ks, err)
+		}
+		if st := r.m.Status(); st.State != Disarmed || r.m.Active() {
+			t.Fatalf("ks=%v: %+v", ks, st)
+		}
+	}
+}
+
+func TestUpQueuedBehindDownIsCancelled(t *testing.T) {
+	r := newRig(t, 0)
+	bd := blockUpDrv{r.d, make(chan struct{}, 1), make(chan struct{})}
+	r.m.Drivers["openvpn"] = bd
+	first := make(chan error, 1)
+	go func() { first <- r.m.Up(context.Background(), prof("a", true), Secrets{}) }()
+	<-bd.in
+	second := make(chan error, 1)
+	go func() { second <- r.m.Up(context.Background(), prof("b", true), Secrets{}) }()
+	time.Sleep(20 * time.Millisecond) // b is now queued on mu
+	go func() { time.Sleep(20 * time.Millisecond); close(bd.release) }()
+	if err := r.m.Down(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-first; !errors.Is(err, ErrCancelled) {
+		t.Fatal(err)
+	}
+	if err := <-second; !errors.Is(err, ErrCancelled) {
+		t.Fatal("queued up must not re-lock after down:", err)
+	}
+	if st := r.m.Status(); st.State != Disarmed {
+		t.Fatalf("%+v", st)
+	}
 }
 
 func TestPanicOffDuringSlowUp(t *testing.T) {
