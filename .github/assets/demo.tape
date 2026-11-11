@@ -1,5 +1,5 @@
 # Recorded with VHS against a running daemon and at least one imported profile.
-# Regenerate: nix run --inputs-from . nixpkgs#vhs -- .github/assets/demo.tape
+# Regenerate: nix run --inputs-from . nixpkgs#vhs -- .github/assets/demo.tape, then pixelate the LHOST (see docs/development.md).
 Output ./.github/assets/demo.gif
 Require vpn-tui
 

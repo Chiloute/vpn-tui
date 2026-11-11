@@ -114,13 +114,21 @@ The README animation `.github/assets/demo.gif` is recorded with [VHS](https://gi
 nix run --inputs-from . nixpkgs#vhs -- .github/assets/demo.tape
 ```
 
+Then pixelate the LHOST in the banner (the region is fixed by the tape's font size and width):
+
+```bash
+nix run --inputs-from . nixpkgs#ffmpeg -- -y -i .github/assets/demo.gif \
+  -filter_complex "[0:v]split[a][b];[b]crop=205:28:843:19,scale=12:2:flags=neighbor,scale=205:28:flags=neighbor[m];[a][m]overlay=843:19,split[x][y];[x]palettegen[p];[y][p]paletteuse" \
+  /tmp/demo.gif && mv /tmp/demo.gif .github/assets/demo.gif
+```
+
 ## Building
 
 Daemon:
 
 ```bash
 CGO_ENABLED=0 go build -o vpn-tuid ./daemon/cmd/vpn-tuid
-CGO_ENABLED=0 go build -ldflags "-X main.version=0.0.0" -o vpn-tuid ./daemon/cmd/vpn-tuid   # with a version
+CGO_ENABLED=0 go build -ldflags "-X main.version=0.1.0" -o vpn-tuid ./daemon/cmd/vpn-tuid   # with a version
 ```
 
 TUI and CLI (single binary, `bun-linux-x64` or `bun-linux-arm64` according to the machine):
