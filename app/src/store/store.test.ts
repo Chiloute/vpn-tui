@@ -177,6 +177,8 @@ test("import: secrets to keyring; rollback if storage fails; error without secre
   expect("error" in previewImport({ filename: "x.txt", content: "nothing" })).toBe(true);
   const pv: any = previewImport({ filename: "x.ovpn", content: ovpn });
   expect(pv.preview).toEqual({ type: "openvpn", id: "x", name: "x", endpoint: "h 1194", hasSecrets: true });
+  const badId: any = previewImport({ filename: "x.ovpn", content: ovpn, id: "SiteVpnKPS" });
+  expect(badId.error).toMatch(/invalid id "SiteVpnKPS"/);
 });
 
 test("daemon rejects the import: lastError passed through, nothing in the keyring", async () => {

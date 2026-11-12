@@ -14,6 +14,9 @@ export function detectType(content: string, filename?: string): ProfileType {
   throw new Error("unrecognized profile type (expected .ovpn OpenVPN or .conf WireGuard)");
 }
 
+export const ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const ID_RULE = "a-z, 0-9 and - (32 characters max, must start with a letter or digit)";
+
 export function slugify(name: string): string {
   const s = name
     .normalize("NFD")
@@ -23,7 +26,7 @@ export function slugify(name: string): string {
     .replace(/^-+/, "")
     .slice(0, 32)
     .replace(/-+$/, "");
-  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(s)) throw new Error(`profile name cannot be converted to an id: "${name}"`);
+  if (!ID.test(s)) throw new Error(`profile name cannot be converted to an id: "${name}"`);
   return s;
 }
 

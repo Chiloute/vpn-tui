@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { call as rpcCall, subscribe as rpcSubscribe, RpcError, type RpcEvent, type SubscribeOpts } from "../rpc/client";
-import { detectType, extractSecrets, slugify, type Secrets } from "../import";
+import { detectType, extractSecrets, ID, ID_RULE, slugify, type Secrets } from "../import";
 import { deleteSecrets, loadSecrets, storeSecrets } from "../keyring";
 import { writeLhost } from "../lhost";
 import { bannerModel, type Banner, type Busy, type Profile, type Sample, type Status } from "./banner";
@@ -48,6 +48,7 @@ function parseImport({ filename, content: raw, name, id }: ImportInput) {
   const { content, secrets } = extractSecrets(type, raw);
   const pname = name ?? basename(filename).replace(/\.[^.]*$/, "");
   const pid = id ?? slugify(pname);
+  if (!ID.test(pid)) throw new Error(`invalid id "${pid}": ${ID_RULE}`);
   const endpoint = type === "openvpn" ? /^\s*remote\s+(\S+(?:\s+\d+)?)/m.exec(content)?.[1] : /^\s*Endpoint\s*=\s*(\S+)/im.exec(content)?.[1];
   return { type, content, secrets, pname, pid, endpoint };
 }

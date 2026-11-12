@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import type { OpenvpnForm, ProfileForm, WireguardForm } from "../store";
+import { ID, ID_RULE } from "../import";
 
 export type Errors = Record<string, string>;
 
@@ -9,7 +10,6 @@ export const isCidr = (s: string): boolean => {
   return v > 0 && rest.length === 0 && /^\d{1,3}$/.test(len ?? "") && Number(len) <= (v === 4 ? 32 : 128);
 };
 const KEY = /^[A-Za-z0-9+/]{43}=$/;
-const ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const TAG = /^[a-z0-9-]{1,16}$/;
 const ENDPOINT = /^(\[[0-9a-fA-F:]+\]|[^\s:[\]]+):(\d{1,5})$/;
 
@@ -31,7 +31,7 @@ export function buildForm(v: Record<string, string>): { errors: Errors; form?: P
   const need = (k: string, msg = "required") => { if (!get(k)) e[k] = msg; };
   need("name");
   if (get("name").length > 64) e.name = "64 characters maximum";
-  if (get("id") && !ID.test(get("id"))) e.id = "a-z, 0-9 and - (32 characters max, must start with a letter or digit)";
+  if (get("id") && !ID.test(get("id"))) e.id = ID_RULE;
   const id = get("id") || undefined;
   const opt = (k: string) => (get(k) ? get(k) : undefined);
   if (v.type === "openvpn") {
