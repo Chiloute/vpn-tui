@@ -132,12 +132,17 @@ A profile's `color` (`base00` to `base0F`) points to one of these entries.
 
 ## NixOS module
 
-The flake exports `nixosModules.default`, a wrapper around `nix/module.nix` that sets `services.vpn-tui.package` to the flake's default package (`lib.mkDefault`). Import it, then set the options under `services.vpn-tui`.
+The options are declared in `nix/module.nix`. That file sets no package: whoever imports it provides `services.vpn-tui.package`. Two modules wrap it and do so with `lib.mkDefault`:
+
+- this flake's `nixosModules.default`, with the flake's `default` package;
+- the NUR module (`nixosModules.vpn-tui` in [Chiloute/nur-packages](https://github.com/Chiloute/nur-packages)), with the NUR `vpn-tui` package.
+
+Import one of them, then set the options under `services.vpn-tui`. Importing `nix/module.nix` directly with `enable = true` and no `package` fails at evaluation: ``The option `services.vpn-tui.package' was accessed but has no value defined``.
 
 | Option | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `services.vpn-tui.enable` | boolean | `false` | Installs the `vpn-tuid.socket` and `vpn-tuid.service` units (socket-activated), the `vpn-tui` group and the package. |
-| `services.vpn-tui.package` | package | none in `nix/module.nix`; the flake's `nixosModules.default` sets the flake's default package for the host system | Package providing `vpn-tuid` and `vpn-tui`. |
+| `services.vpn-tui.package` | package | none in `nix/module.nix`; set by the wrapping module (see above) | Package providing `vpn-tuid` and `vpn-tui`. |
 | `services.vpn-tui.users` | list of strings | `[]` | Users added to the `vpn-tui` group. `root` is refused by an assertion. |
 | `services.vpn-tui.idleTimeout` | string | `"60s"` | `--idle-timeout`. |
 | `services.vpn-tui.restoreLockOnBoot` | boolean | `false` | Adds the `vpn-tuid-restore-lock` oneshot unit, which runs `vpn-tuid --restore-lock` at boot. Requires `enable`. |
@@ -176,8 +181,7 @@ What the module sets, beyond the options:
 - Socket unit `vpn-tuid.socket`: `/run/vpn-tui/vpn-tuid.sock`, mode 0660, owner `root`, group `vpn-tui`.
 - It does not enable `networking.nftables` and does not change `networking.firewall` (see [architecture.md](architecture.md#coexistence-with-other-nftables-chains)).
 
-> [!NOTE]
-> No flake check evaluates the module yet (`flake.nix` carries a TODO for a `killswitch` check). The options above are read from `nix/module.nix`, not from a test.
+The `killswitch` and `killswitch-nft` flake checks boot a NixOS VM with `nixosModules.default` (see [development.md](development.md#nix-flake-check)).
 
 ## Locations
 

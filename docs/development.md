@@ -157,4 +157,13 @@ The Go vendor hash (`nix/daemon.nix`, `vendorHash`) and the hash of the Bun depe
 nix flake check
 ```
 
-The checks declared in `flake.nix` are `go-tests` (the daemon package built with `doCheck = true`, so `go test ./...`, where the netns tests skip themselves for lack of `CAP_NET_ADMIN` in the build sandbox) and `bun-tests` (`bun test`). `flake.nix` carries a TODO for a `killswitch` check, which does not exist yet: no check evaluates `nix/module.nix`.
+The checks declared in `flake.nix`:
+
+| Check | What it runs |
+| --- | --- |
+| `go-tests` | The daemon package built with `doCheck = true`, so `go test ./...`. The netns tests skip themselves for lack of `CAP_NET_ADMIN` in the build sandbox. |
+| `bun-tests` | `bun test`. |
+| `killswitch` | NixOS VM test (`nix/tests/killswitch.nix`): a client with `nixosModules.default` and a WireGuard/OpenVPN server. Covers socket access by group, profile import, WireGuard up, tunnel failure and lock, WireGuard to OpenVPN switch with a leak probe, daemon restart, reboot with `restoreLockOnBoot`, `panic-off`, and the systemd hardening. The NixOS firewall uses iptables-nft. |
+| `killswitch-nft` | The same test with `networking.nftables.enable = true`. |
+
+The VM tests need KVM. Run one check with `nix build .#checks.x86_64-linux.killswitch -L`.
