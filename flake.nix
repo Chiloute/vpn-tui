@@ -31,7 +31,15 @@
   in {
     packages = forAllSystems (system: pkgs: {inherit (mk pkgs) vpn-tuid vpn-tui default;});
 
-    nixosModules.default = import ./nix/module.nix self;
+    # nix/module.nix has no default package (also imported as-is by NUR); the flake supplies one.
+    nixosModules.default = {
+      lib,
+      pkgs,
+      ...
+    }: {
+      imports = [./nix/module.nix];
+      services.vpn-tui.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    };
 
     checks = forAllSystems (system: pkgs: {
       killswitch = import ./nix/tests/killswitch.nix {inherit pkgs self;};

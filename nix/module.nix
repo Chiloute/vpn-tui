@@ -1,5 +1,5 @@
 # NixOS module: root daemon vpn-tuid (socket-activated, hardened) + client.
-self: {
+{
   config,
   lib,
   pkgs,
@@ -63,8 +63,6 @@ in {
     enable = mkEnableOption "the vpn-tui VPN daemon with kill switch";
     package = mkOption {
       type = types.package;
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-      defaultText = "vpn-tui flake default package";
       description = "The vpn-tui package (daemon and client).";
     };
     users = mkOption {

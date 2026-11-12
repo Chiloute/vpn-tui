@@ -132,12 +132,12 @@ A profile's `color` (`base00` to `base0F`) points to one of these entries.
 
 ## NixOS module
 
-The flake exports `nixosModules.default` (`nix/module.nix`). Import it, then set the options under `services.vpn-tui`.
+The flake exports `nixosModules.default`, a wrapper around `nix/module.nix` that sets `services.vpn-tui.package` to the flake's default package (`lib.mkDefault`). Import it, then set the options under `services.vpn-tui`.
 
 | Option | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `services.vpn-tui.enable` | boolean | `false` | Installs the `vpn-tuid.socket` and `vpn-tuid.service` units (socket-activated), the `vpn-tui` group and the package. |
-| `services.vpn-tui.package` | package | default package of this flake for the host system | Package providing `vpn-tuid` and `vpn-tui`. |
+| `services.vpn-tui.package` | package | none in `nix/module.nix`; the flake's `nixosModules.default` sets the flake's default package for the host system | Package providing `vpn-tuid` and `vpn-tui`. |
 | `services.vpn-tui.users` | list of strings | `[]` | Users added to the `vpn-tui` group. `root` is refused by an assertion. |
 | `services.vpn-tui.idleTimeout` | string | `"60s"` | `--idle-timeout`. |
 | `services.vpn-tui.restoreLockOnBoot` | boolean | `false` | Adds the `vpn-tuid-restore-lock` oneshot unit, which runs `vpn-tuid --restore-lock` at boot. Requires `enable`. |
