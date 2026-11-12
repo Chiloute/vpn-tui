@@ -27,7 +27,10 @@ To build from source: Go 1.26 and Bun (see [docs/development.md](docs/developmen
 
 ## Installation
 
-### Flake and NixOS module
+Pick one method and expand it.
+
+<details>
+<summary><strong>Flake and NixOS module</strong></summary>
 
 Add the flake as an input, import the module and enable the service:
 
@@ -61,6 +64,55 @@ sudo nixos-rebuild switch --flake .#myhost
 The module installs the daemon as a socket-activated service, creates the `vpn-tui` group and the directories, and puts `vpn-tui` in the system packages. All options are in [docs/configuration.md](docs/configuration.md#nixos-module).
 
 The packages can also be built on their own: `nix build github:Chiloute/vpn-tui` (client and daemon), `.#vpn-tuid` or `.#vpn-tui`. The daemon needs a root service to run, so use the module on NixOS.
+
+</details>
+
+<details>
+<summary><strong>NUR</strong></summary>
+
+The package is also in the [NUR](https://github.com/nix-community/NUR) under the repository name `Chiloute` (source: [Chiloute/nur-packages](https://github.com/Chiloute/nur-packages)). The `vpn-tui` attribute provides both `bin/vpn-tui` and `bin/vpn-tuid`. Keep the module from this flake and point `services.vpn-tui.package` (type `package`, default: this flake's `default` package) at the NUR package. The module runs `bin/vpn-tuid` for the daemon units and `bin/vpn-tui` for `vpn-tui-notify`.
+
+```nix
+{
+  inputs = {
+    nur.url = "github:nix-community/NUR";
+    vpn-tui.url = "github:Chiloute/vpn-tui";
+  };
+
+  outputs = { nixpkgs, nur, vpn-tui, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        { nixpkgs.overlays = [ nur.overlays.default ]; }
+        vpn-tui.nixosModules.default
+        ({ pkgs, ... }: {
+          services.vpn-tui = {
+            enable = true;
+            users = [ "alice" ];
+            package = pkgs.nur.repos.Chiloute.vpn-tui;
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
+Without the NUR overlay, use the NUR repository as a direct flake input:
+
+```nix
+inputs.nur-chiloute.url = "github:Chiloute/nur-packages";
+
+# in a module
+services.vpn-tui.package = nur-chiloute.packages.${pkgs.stdenv.hostPlatform.system}.vpn-tui;
+```
+
+> [!NOTE]
+> The NUR only ships the package. The NixOS module still comes from this repository (`vpn-tui.nixosModules.default`). The NUR has no binary cache, so Nix builds the Go daemon and the Bun client locally. The NUR repository picks up new tags of this repository once a week, so a new release can take up to a week to appear there.
+
+On a system without NixOS, `nix profile install github:Chiloute/nur-packages#vpn-tui` installs the client and the daemon. Nothing starts the daemon for you: run `vpn-tuid` as root yourself.
+
+</details>
 
 ## Quick start
 
